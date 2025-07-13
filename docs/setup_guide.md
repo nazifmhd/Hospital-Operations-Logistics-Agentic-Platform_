@@ -1,4 +1,4 @@
-# Hospital Supply Inventory Agent - Setup and Installation Guide
+# Hospital Operations & Logistics Platform - Setup and Installation Guide
 
 ## Prerequisites
 
@@ -6,37 +6,75 @@
 - **Operating System**: Windows 10/11, macOS 10.15+, or Linux Ubuntu 18.04+
 - **Python**: Version 3.9 or higher
 - **Node.js**: Version 16 or higher
-- **RAM**: Minimum 8GB (16GB recommended)
-- **Storage**: Minimum 10GB free space
+- **RAM**: Minimum 8GB (16GB recommended for production)
+- **Storage**: Minimum 20GB free space
+- **Network**: Stable internet connection
 
 ### Required Software
-- Git
-- Python 3.9+
-- Node.js 16+
-- npm or yarn
-- PostgreSQL (optional for production)
-- Redis (optional for production)
+- **Git**: For version control
+- **Python 3.9+**: Backend development
+- **Node.js 16+**: Frontend development
+- **npm or yarn**: Package management
+- **Docker** (optional): Containerized deployment
+- **PostgreSQL** (optional): Production database
+- **Redis** (optional): Caching and real-time features
 
-## Quick Start Guide
+## 🚀 Quick Start Guide
 
-### 1. Clone the Repository
+### Method 1: Docker Deployment (Recommended)
+
+#### 1. Clone the Repository
 ```powershell
-git clone https://github.com/your-org/Hospital-Operations-Logistics-Agentic-Platform_.git
+git clone https://github.com/nazifmhd/Hospital-Operations-Logistics-Agentic-Platform_.git
 cd Hospital-Operations-Logistics-Agentic-Platform_
 ```
 
-### 2. Backend Setup
+#### 2. Start with Docker Compose
+```powershell
+# Build and start all services
+docker-compose up --build
 
-#### Install Python Dependencies
+# Run in background (detached mode)
+docker-compose up -d
+```
+
+#### 3. Access the Application
+- **Frontend Dashboard**: http://localhost:3000
+- **Backend API**: http://localhost:8001
+- **API Documentation**: http://localhost:8001/docs
+- **Health Check**: http://localhost:8001/health
+
+### Method 2: Manual Installation
+
+#### 1. Clone the Repository
+```powershell
+git clone https://github.com/nazifmhd/Hospital-Operations-Logistics-Agentic-Platform_.git
+cd Hospital-Operations-Logistics-Agentic-Platform_
+```
+
+#### 2. Backend Setup
+
+##### Install Python Dependencies
 ```powershell
 cd backend
+
+# Create virtual environment (recommended)
+python -m venv venv
+
+# Activate virtual environment
+# Windows:
+.\venv\Scripts\activate
+# Linux/Mac:
+# source venv/bin/activate
+
+# Upgrade pip
 python -m pip install --upgrade pip
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-**Note**: The requirements.txt has been optimized to avoid conflicts with Python's built-in modules (logging, datetime, asyncio are part of Python standard library).
-
-#### Start the Backend Server
+##### Start the Backend Server
 ```powershell
 # Navigate to the API directory
 cd api
@@ -45,228 +83,320 @@ cd api
 python main.py
 ```
 
-The backend server will start on `http://localhost:8000`
+The backend server will start on `http://localhost:8001`
 
-### 3. Frontend Setup
+#### 3. Frontend Setup
 
-#### Install Node.js Dependencies
 ```powershell
-# Open a new terminal window
-cd dashboard/supply_dashboard
+cd dashboard
+
+# Install dependencies
 npm install
-```
 
-#### Start the React Development Server
-```powershell
+# Start the development server
 npm start
 ```
 
 The frontend will start on `http://localhost:3000`
 
-## Detailed Setup Instructions
+## 🔧 Development Environment Setup
 
-### Backend Configuration
+### Environment Variables
 
-#### Environment Variables
-Create a `.env` file in the `backend/api` directory:
+#### Frontend Environment (.env)
+Create a `.env` file in the `dashboard/` directory:
+```env
+REACT_APP_API_URL=http://localhost:8001
+REACT_APP_WS_URL=ws://localhost:8001/ws
+REACT_APP_ENV=development
+REACT_APP_VERSION=1.0.0
+```
+
+#### Backend Environment (.env)
+Create a `.env` file in the `backend/` directory:
 ```env
 # API Configuration
-API_HOST=0.0.0.0
-API_PORT=8000
-DEBUG=True
+DEBUG=true
+API_HOST=localhost
+API_PORT=8001
+CORS_ORIGINS=["http://localhost:3000"]
 
-# Database Configuration (for production)
-DATABASE_URL=postgresql://user:password@localhost:5432/hospital_supply
-REDIS_URL=redis://localhost:6379
+# Database (optional for development)
+DATABASE_URL=sqlite:///./hospital_ops.db
 
 # Security
-SECRET_KEY=your-secret-key-here
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+SECRET_KEY=your-development-secret-key
+JWT_ALGORITHM=HS256
 
-# CORS Configuration
-CORS_ORIGINS=["http://localhost:3000"]
+# Agent Configuration
+AGENT_UPDATE_INTERVAL=30
+ENABLE_REAL_TIME_UPDATES=true
 ```
 
-#### Database Setup (Production)
-```powershell
-# Install PostgreSQL and Redis
-# For development, the agent uses in-memory storage
+## 🧪 Testing the Installation
 
-# Create database
-createdb hospital_supply
+### Health Checks
+After installation, verify the setup:
 
-# Run migrations (when implemented)
-# python manage.py migrate
-```
-
-### Frontend Configuration
-
-#### Environment Variables
-Create a `.env` file in the `dashboard/supply_dashboard` directory:
-```env
-REACT_APP_API_URL=http://localhost:8000
-REACT_APP_WS_URL=ws://localhost:8000/ws
-REACT_APP_ENVIRONMENT=development
-```
-
-#### Build for Production
-```powershell
-cd dashboard/supply_dashboard
-npm run build
-```
-
-## Running the Application
-
-### Development Mode
-1. Start the backend server:
-   ```powershell
-   cd backend/api
-   python main.py
+1. **Backend Health Check**:
+   ```
+   GET http://localhost:8001/health
+   ```
+   Expected response:
+   ```json
+   {
+     "status": "healthy",
+     "timestamp": "2025-07-13T10:30:00Z",
+     "version": "1.0.0"
+   }
    ```
 
-2. Start the frontend development server:
-   ```powershell
-   cd dashboard/supply_dashboard
-   npm start
-   ```
+2. **Frontend Access**: Navigate to http://localhost:3000
+   - Should display the main dashboard
+   - All navigation links should work
+   - Real-time updates should be functional
 
-3. Open your browser and navigate to `http://localhost:3000`
+3. **API Documentation**: Visit http://localhost:8001/docs
+   - Interactive Swagger UI should load
+   - All endpoints should be documented
 
-### Production Deployment
+### Feature Testing
 
-#### Using Docker (Recommended)
-```powershell
-# Build and run with Docker Compose
-docker-compose up -d
-```
+#### Dashboard Pages Verification
+Test all 9 pages of the platform:
 
-#### Manual Deployment
-1. Build the frontend:
-   ```powershell
-   cd dashboard/supply_dashboard
-   npm run build
-   ```
+1. **Main Dashboard** (`/`): 
+   - Real-time metrics display
+   - Navigation links functional
+   - Recent activity updates
 
-2. Deploy the backend with a production WSGI server:
-   ```powershell
-   pip install gunicorn
-   gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:8000
-   ```
+2. **Analytics** (`/analytics`):
+   - Inventory overview charts
+   - Consumption trends
+   - Cost analysis data
 
-## Testing the Installation
+3. **Alerts** (`/alerts`):
+   - Alert list with priorities
+   - Resolution functionality
+   - Filter capabilities
 
-### Backend Health Check
-```powershell
-# Test API health endpoint
-curl http://localhost:8000/health
-```
+4. **Inventory** (`/inventory`):
+   - Item listing and search
+   - Stock level updates
+   - Category filtering
 
-Expected response:
-```json
-{
-  "status": "healthy",
-  "timestamp": "2025-01-12T10:30:00Z",
-  "agent_running": true
-}
-```
+5. **Professional Dashboard** (`/professional`):
+   - Executive metrics
+   - Quick actions modal
+   - Management insights
 
-### Frontend Access
-1. Open `http://localhost:3000` in your browser
-2. You should see the Supply Inventory Dashboard
-3. Check that real-time data is loading
+6. **Multi-Location** (`/multi-location`):
+   - 6 location display
+   - Transfer functionality
+   - Location-specific metrics
 
-### WebSocket Connection
-1. Open browser developer tools
-2. Check the Network tab for WebSocket connections
-3. Verify real-time updates are working
+7. **Batch Management** (`/batch-management`):
+   - Batch tracking information
+   - Expiry monitoring
+   - Compliance data
 
-## Configuration Options
+8. **User Management** (`/user-management`):
+   - User accounts display
+   - Role management
+   - Activity tracking
 
-### Agent Configuration
-Modify `agents/supply_inventory_agent/supply_agent.py`:
-```python
-# Monitoring frequency (seconds)
-MONITORING_INTERVAL = 60
+9. **Settings** (`/settings`):
+   - Configuration options
+   - System preferences
+   - Notification settings
 
-# Alert thresholds
-LOW_STOCK_THRESHOLD = 0.2  # 20% of max capacity
-EXPIRY_WARNING_DAYS = 30
-
-# Usage pattern analysis
-USAGE_HISTORY_DAYS = 30
-```
-
-### Dashboard Configuration
-Modify `dashboard/supply_dashboard/src/context/SupplyDataContext.js`:
-```javascript
-// API configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-
-// Update frequency (milliseconds)
-const UPDATE_INTERVAL = 5000;
-
-// WebSocket reconnection settings
-const WS_RECONNECT_DELAY = 5000;
-```
-
-## Troubleshooting
+## 🛠️ Troubleshooting
 
 ### Common Issues
 
-#### Backend Issues
-1. **Import errors**: Ensure all dependencies are installed
-   ```powershell
-   pip install -r requirements.txt
-   ```
+#### Backend Won't Start
+```
+Error: Address already in use
+```
+**Solution**: Change port or kill existing process:
+```powershell
+# Windows
+netstat -ano | findstr :8001
+taskkill /PID <PID> /F
 
-2. **Port already in use**: Change the port in `main.py`
-   ```python
-   uvicorn.run(app, host="0.0.0.0", port=8001)
-   ```
+# Linux/Mac
+lsof -ti:8001 | xargs kill -9
+```
 
-3. **CORS errors**: Check CORS configuration in `main.py`
+#### Frontend Build Errors
+```
+Module not found: Can't resolve 'module-name'
+```
+**Solution**: Clear cache and reinstall:
+```powershell
+rm -rf node_modules package-lock.json
+npm install
+```
 
-#### Frontend Issues
-1. **Node modules errors**: Delete and reinstall
-   ```powershell
-   rm -rf node_modules package-lock.json
-   npm install
-   ```
+#### CORS Errors
+```
+Access blocked by CORS policy
+```
+**Solution**: Verify CORS settings in backend `main.py`:
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
 
-2. **API connection issues**: Check the API URL in `.env`
+#### Docker Issues
+```
+Error: Cannot connect to the Docker daemon
+```
+**Solution**: Ensure Docker is running:
+```powershell
+# Windows: Start Docker Desktop
+# Linux: sudo systemctl start docker
+```
 
-3. **WebSocket connection failed**: Ensure backend is running
+## 🚀 Production Deployment
 
-#### Performance Issues
-1. **Slow loading**: Check network connectivity
-2. **High memory usage**: Reduce monitoring frequency
-3. **Database errors**: Check database connection settings
+### Using Docker (Recommended)
 
-### Logs and Debugging
+#### Production Docker Compose
+```yaml
+version: '3.8'
 
-#### Backend Logs
-- Logs are output to console by default
-- Check for agent initialization messages
-- Monitor WebSocket connection logs
+services:
+  frontend:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    environment:
+      - REACT_APP_API_URL=https://api.yourhospital.com
+    depends_on:
+      - backend
 
-#### Frontend Debugging
-- Open browser developer tools
-- Check Console for JavaScript errors
-- Monitor Network tab for API calls
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - DEBUG=false
+      - DATABASE_URL=postgresql://user:pass@db:5432/hospital_ops
+    depends_on:
+      - db
 
-### Getting Help
-1. Check the [documentation](./docs/)
-2. Review [common issues](./docs/troubleshooting.md)
-3. Contact the development team
-4. Submit issues on GitHub
+  db:
+    image: postgres:14
+    environment:
+      - POSTGRES_DB=hospital_ops
+      - POSTGRES_USER=hospital_user
+      - POSTGRES_PASSWORD=secure_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
-## Next Steps
+volumes:
+  postgres_data:
+```
 
-### Initial Configuration
-1. **Review sample data**: Check the inventory items in the agent
-2. **Configure alerts**: Adjust thresholds for your needs
-3. **Set up users**: Configure role-based access
-4. **Integrate systems**: Connect to existing hospital systems
+### Manual Production Setup
+
+#### Production Backend
+```bash
+cd backend
+
+# Create production virtual environment
+python3.9 -m venv prod_venv
+source prod_venv/bin/activate
+
+# Install production dependencies
+pip install -r requirements.txt
+pip install gunicorn uvicorn[standard]
+
+# Run with Gunicorn
+cd api
+gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8001
+```
+
+#### Production Frontend
+```bash
+cd dashboard
+
+# Install dependencies
+npm ci --only=production
+
+# Build for production
+npm run build
+
+# Serve with nginx
+sudo cp -r build/* /var/www/html/
+```
+
+## 🔒 Security Configuration
+
+### Development Security
+- Use environment variables for sensitive data
+- Enable CORS only for development domains
+- Implement proper authentication
+- Use HTTPS in production
+
+### Production Security Checklist
+- [ ] SSL/TLS certificates configured
+- [ ] Environment variables secured
+- [ ] Database credentials encrypted
+- [ ] CORS origins restricted
+- [ ] Rate limiting implemented
+- [ ] Input validation enabled
+- [ ] Error handling without information disclosure
+
+## 📊 Performance Optimization
+
+### Backend Optimization
+```python
+# Use async/await for I/O operations
+# Implement connection pooling for databases
+# Use caching for frequent queries
+# Enable compression middleware
+```
+
+### Frontend Optimization
+```javascript
+// Use React.memo for expensive components
+// Implement lazy loading for routes
+// Optimize bundle size with code splitting
+// Use React.useMemo for expensive calculations
+```
+
+## 🎯 Next Steps
+
+After successful installation:
+
+1. **Explore the Platform**: Navigate through all 9 dashboard pages
+2. **Review Documentation**: Check out the [User Guide](./user_guide.md) and [API Documentation](./api_documentation.md)
+3. **Customize Configuration**: Adjust settings for your hospital's needs
+4. **Set Up Monitoring**: Implement logging and alerting
+5. **Plan Deployment**: Prepare for production deployment using the [Deployment Guide](./deployment_guide.md)
+6. **Train Users**: Educate staff on platform features
+
+### Additional Resources
+- [User Guide](./user_guide.md) - Detailed feature documentation
+- [API Documentation](./api_documentation.md) - Complete API reference
+- [Architecture Guide](./architecture.md) - Technical details
+- [Contributing Guide](./contributing.md) - Development guidelines
+- [Project Structure](./project_structure.md) - Codebase organization
+
+---
+
+*Last updated: July 13, 2025*
 
 ### Training
 1. **Admin training**: System configuration and management
