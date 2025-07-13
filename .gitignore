@@ -1,0 +1,243 @@
+# Hospital Operations Logistics Platform - .gitignore
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Production builds
+build/
+dist/
+out/
+.next/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.development
+.env.production
+.env.staging
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+.env.test
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# next.js build output
+.next
+
+# nuxt.js build output
+.nuxt
+
+# vuepress build output
+.vuepress/dist
+
+# Serverless directories
+.serverless
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Backend specific
+instance/
+.webassets-cache
+celerybeat-schedule
+celerybeat.pid
+
+# Frontend specific (React/Node.js)
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# testing
+coverage/
+.nyc_output
+
+# misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Editor directories and files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Security and config files that may contain sensitive data
+config.json
+secrets.json
+*.pem
+*.key
+*.cert
+*.crt
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Analytics and tracking
+google*.html
+analytics/
+
+# Local development
+.local/
+local/
+
+# AI/ML models and data (if any)
+*.pkl
+*.joblib
+*.h5
+*.pb
+models/
+data/raw/
+data/processed/
+
+# Hospital-specific sensitive data (if any)
+patient_data/
+medical_records/
+phi_data/
+hipaa_data/
+
+# API keys and sensitive configuration
+api_keys.txt
+secrets/
+credentials/
+
+# Build tools
+.cache/
+.webpack/
+.rollup.cache/
+
+# Monitoring and logging
+monitoring/
+*.log.*
+logs/
+
+# Performance profiling
+*.prof
+*.trace
+
+# Documentation build artifacts
+docs/_build/
+docs/build/
+
+# Local development tools
+.devcontainer/
+.localstack/
+
+# Testing artifacts
+test-results/
+screenshots/
+videos/
+cypress/videos/
+cypress/screenshots/
+
+# Miscellaneous
+*.stackdump
+core
