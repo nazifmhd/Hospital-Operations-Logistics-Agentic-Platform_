@@ -3,7 +3,7 @@ Professional Hospital Supply Inventory Management API
 Enhanced with multi-location, batch tracking, user management, and compliance features
 """
 
-from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -15,6 +15,7 @@ import logging
 import uvicorn
 import sys
 import os
+import json
 
 # Add the agents directory to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -50,6 +51,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# WebSocket connection management
+websocket_connections: List[WebSocket] = []
+
+# Background task for broadcasting updates
+async def broadcast_updates():
+    """Broadcast real-time updates to connected WebSocket clients"""
+    while True:
+        try:
+            if professional_agent and websocket_connections:
+                dashboard_data = await get_dashboard_data_async()
+                message = json.dumps({
+                    "type": "dashboard_update",
+                    "data": dashboard_data,
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+                # Send to all connected clients
+                disconnected = []
+                for websocket in websocket_connections:
+                    try:
+                        await websocket.send_text(message)
+                    except:
+                        disconnected.append(websocket)
+                
+                # Remove disconnected clients
+                for ws in disconnected:
+                    websocket_connections.remove(ws)
+            
+            await asyncio.sleep(5)  # Broadcast every 5 seconds
+        except Exception as e:
+            logging.error(f"Error in broadcast_updates: {e}")
+            await asyncio.sleep(10)
+
+async def get_dashboard_data_async():
+    """Async wrapper for dashboard data"""
+    try:
+        return await professional_agent.get_enhanced_dashboard_data()
+    except Exception as e:
+        logging.error(f"Error getting dashboard data: {e}")
+        return {
+            "inventory": [],
+            "alerts": [],
+            "analytics": {},
+            "locations": [],
+            "last_updated": datetime.now().isoformat(),
+            "error": str(e)
+        }
+
 # Pydantic models for API
 class TransferRequest(BaseModel):
     item_id: str
@@ -65,28 +114,76 @@ class InventoryUpdate(BaseModel):
     reason: str
 
 class PurchaseOrderRequest(BaseModel):
-    items: List[Dict[str, Any]]
-    department: str
-    urgency: str = "normal"
+    item_id: str
+    quantity: int
+    preferred_supplier: Optional[str] = None
+    urgency: str = "medium"
     notes: Optional[str] = None
-
-class UserLogin(BaseModel):
-    username: str
-    password: str
 
 class AlertAssignment(BaseModel):
     alert_id: str
     assigned_to: str
+    notes: Optional[str] = None
 
-class BatchReceival(BaseModel):
-    item_id: str
-    supplier_id: str
-    lot_number: str
-    quantity: int
-    manufacture_date: datetime
-    expiry_date: datetime
-    cost_per_unit: float
-    certificates: List[str]
+class BatchUpdate(BaseModel):
+    batch_id: str
+    status: str
+    notes: Optional[str] = None
+
+# Initialize the professional agent
+professional_agent = ProfessionalSupplyInventoryAgent()
+
+# FastAPI app initialization
+app = FastAPI(
+    title="Professional Hospital Supply Inventory Management System",
+    description="Enterprise-grade supply chain management for hospitals",
+    version="2.0.0"
+)
+
+# Security
+security = HTTPBearer()
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# WebSocket connection management
+websocket_connections: List[WebSocket] = []
+
+# Background task for broadcasting updates
+async def broadcast_updates():
+    """Broadcast real-time updates to connected WebSocket clients"""
+    while True:
+        try:
+            if professional_agent and websocket_connections:
+                dashboard_data = await get_dashboard_data_async()
+                message = json.dumps({
+                    "type": "dashboard_update",
+                    "data": dashboard_data,
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+                # Send to all connected clients
+                disconnected = []
+                for websocket in websocket_connections:
+                    try:
+                        await websocket.send_text(message)
+                    except:
+                        disconnected.append(websocket)
+                
+                # Remove disconnected clients
+                for ws in disconnected:
+                    websocket_connections.remove(ws)
+            
+            await asyncio.sleep(5)  # Broadcast every 5 seconds
+        except Exception as e:
+            logging.error(f"Error in broadcast_updates: {e}")
+            await asyncio.sleep(10)
 
 # Authentication dependency
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -101,6 +198,8 @@ async def startup_event():
         await professional_agent.initialize()
         # Start monitoring in background
         asyncio.create_task(professional_agent.start_monitoring())
+        # Start WebSocket broadcast task
+        asyncio.create_task(broadcast_updates())
         logging.info("Professional Supply Inventory Agent started successfully")
     except Exception as e:
         logging.error(f"Failed to initialize agent: {e}")
@@ -709,6 +808,56 @@ async def get_procurement_recommendations():
         return JSONResponse(content=recommendations)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# WebSocket endpoint for real-time updates
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time dashboard updates"""
+    await websocket.accept()
+    websocket_connections.append(websocket)
+    
+    try:
+        # Send initial data
+        if professional_agent:
+            dashboard_data = await get_dashboard_data_async()
+            await websocket.send_text(json.dumps({
+                "type": "initial_data",
+                "data": dashboard_data,
+                "timestamp": datetime.now().isoformat()
+            }))
+        
+        # Keep connection alive and handle incoming messages
+        while True:
+            try:
+                # Wait for client messages (keep-alive)
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+    except Exception as e:
+        logging.error(f"WebSocket error: {e}")
+    finally:
+        if websocket in websocket_connections:
+            websocket_connections.remove(websocket)
+
+@app.websocket("/api/v2/notifications")
+async def websocket_notifications_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time notifications (legacy endpoint)"""
+    await websocket.accept()
+    try:
+        # Add to connections
+        websocket_connections.append(websocket)
+        
+        # Keep connection open
+        while True:
+            await asyncio.sleep(3600)  # 1 hour
+    except WebSocketDisconnect:
+        logging.info("Client disconnected")
+    except Exception as e:
+        logging.error(f"WebSocket error: {e}")
+    finally:
+        # Remove from connections
+        if websocket in websocket_connections:
+            websocket_connections.remove(websocket)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
