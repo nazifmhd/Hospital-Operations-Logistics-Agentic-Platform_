@@ -7,14 +7,11 @@ import {
   Edit, 
   Trash2, 
   Search,
-  Filter,
   CheckCircle,
   XCircle,
-  Eye,
   Lock,
   Mail,
-  Phone,
-  Calendar
+  Phone
 } from 'lucide-react';
 
 const UserManagement = () => {
@@ -27,6 +24,7 @@ const UserManagement = () => {
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [userLoading, setUserLoading] = useState(false);
   const [userForm, setUserForm] = useState({
     username: '',
     email: '',
@@ -87,7 +85,7 @@ const UserManagement = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch('http://localhost:8001/api/v2/users');
+      const response = await fetch('http://localhost:8000/api/v2/users');
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
@@ -129,16 +127,16 @@ const UserManagement = () => {
           }
         ]);
       }
-      setLoading(false);
+      setUserLoading(false);
     } catch (error) {
       console.error('Error fetching users:', error);
-      setLoading(false);
+      setUserLoading(false);
     }
   };
 
   const fetchRoles = async () => {
     try {
-      const response = await fetch('http://localhost:8001/api/v2/users/roles');
+      const response = await fetch('http://localhost:8000/api/v2/users/roles');
       if (response.ok) {
         const data = await response.json();
         setRoles(data);
@@ -167,8 +165,8 @@ const UserManagement = () => {
     e.preventDefault();
     try {
       const endpoint = isEditing 
-        ? `http://localhost:8001/api/v2/users/${selectedUser.user_id}`
-        : 'http://localhost:8001/api/v2/users';
+        ? `http://localhost:8000/api/v2/users/${selectedUser.user_id}`
+        : 'http://localhost:8000/api/v2/users';
       
       const method = isEditing ? 'PUT' : 'POST';
       
@@ -221,7 +219,7 @@ const UserManagement = () => {
     if (!window.confirm('Are you sure you want to delete this user?')) return;
     
     try {
-      const response = await fetch(`http://localhost:8001/api/v2/users/${userId}`, {
+      const response = await fetch(`http://localhost:8000/api/v2/users/${userId}`, {
         method: 'DELETE'
       });
 
@@ -239,7 +237,7 @@ const UserManagement = () => {
 
   const handleToggleUserStatus = async (userId, currentStatus) => {
     try {
-      const response = await fetch(`http://localhost:8001/api/v2/users/${userId}/status`, {
+      const response = await fetch(`http://localhost:8000/api/v2/users/${userId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_active: !currentStatus })

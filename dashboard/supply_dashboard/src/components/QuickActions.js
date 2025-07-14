@@ -62,7 +62,7 @@ const QuickActions = ({ className = '' }) => {
   const handleComplianceCheck = async () => {
     setActionLoading('compliance');
     try {
-      const response = await fetch('http://localhost:8001/api/v2/analytics/compliance');
+      const response = await fetch('http://localhost:8000/api/v2/analytics/compliance');
       if (response.ok) {
         const complianceData = await response.json();
         alert(`Compliance Check Complete:\n\n` +

@@ -8,6 +8,7 @@ import ProfessionalDashboard from './components/ProfessionalDashboard';
 import MultiLocationInventory from './components/MultiLocationInventory';
 import BatchManagement from './components/BatchManagement';
 import UserManagement from './components/UserManagement';
+import AIMLDashboard from './components/AIMLDashboard';
 import Settings from './components/Settings';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -38,6 +39,7 @@ function App() {
                 <Route path="/multi-location" element={<MultiLocationInventory />} />
                 <Route path="/batch-management" element={<BatchManagement />} />
                 <Route path="/user-management" element={<UserManagement />} />
+                <Route path="/ai-ml" element={<AIMLDashboard />} />
                 <Route path="/alerts" element={<AlertsPanel />} />
                 <Route path="/analytics" element={<Analytics />} />
                 <Route path="/settings" element={<Settings />} />

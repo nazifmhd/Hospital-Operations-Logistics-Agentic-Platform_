@@ -14,6 +14,38 @@ from enum import Enum
 import json
 import uuid
 from typing import Union
+import sys
+import os
+
+# Add AI/ML modules to path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'ai_ml'))
+
+# AI/ML imports
+try:
+    from predictive_analytics import (
+        AdvancedPredictiveAnalytics, 
+        predictive_analytics, 
+        initialize_ai_engine,
+        ForecastResult,
+        AnomalyDetection,
+        OptimizationResult
+    )
+    from demand_forecasting import (
+        AdvancedDemandForecasting,
+        demand_forecasting,
+        DemandForecast
+    )
+    from intelligent_optimization import (
+        IntelligentOptimizer,
+        intelligent_optimizer,
+        OptimizationSolution,
+        OptimizationObjective
+    )
+    AI_ML_AVAILABLE = True
+    print("✅ AI/ML modules loaded successfully")
+except ImportError as e:
+    print(f"⚠️ AI/ML modules not available: {e}")
+    AI_ML_AVAILABLE = False
 
 class SupplyCategory(Enum):
     MEDICAL_SUPPLIES = "medical_supplies"
@@ -154,6 +186,9 @@ class SupplyItem:
     
     # Usage tracking
     usage_history: List[Dict[str, Any]]
+
+    # Daily consumption for demand forecasting
+    daily_consumption: int = 10
     
     @property
     def current_quantity(self) -> int:
@@ -772,7 +807,7 @@ class ProfessionalSupplyInventoryAgent:
         ]
         
         # Create SupplyItem objects for additional items
-        for item_data in additional_items:
+        for idx, item_data in enumerate(additional_items):
             locations_dict = {}
             for loc_name, quantity in item_data["locations"].items():
                 locations_dict[loc_name] = LocationStock(
@@ -783,7 +818,6 @@ class ProfessionalSupplyInventoryAgent:
                     minimum_threshold=item_data["reorder_point"],
                     maximum_capacity=quantity * 3
                 )
-            
             # Create sample batch for each item
             batch = InventoryBatch(
                 batch_id=f"{item_data['id']}-2024-001",
@@ -798,7 +832,8 @@ class ProfessionalSupplyInventoryAgent:
                 storage_conditions="Standard storage",
                 certificates=["FDA-Approved"]
             )
-            
+            # Assign a unique daily_consumption value for each item using the index
+            unique_daily_consumption = 10 + idx * 7
             supply_item = SupplyItem(
                 id=item_data["id"],
                 name=item_data["name"],
@@ -821,9 +856,9 @@ class ProfessionalSupplyInventoryAgent:
                 created_by="admin001",
                 locations=locations_dict,
                 batches=[batch],
-                usage_history=[]
+                usage_history=[],
+                daily_consumption=unique_daily_consumption
             )
-            
             enhanced_items[item_data["id"]] = supply_item
         
         self.inventory = enhanced_items
@@ -1249,6 +1284,7 @@ class ProfessionalSupplyInventoryAgent:
                 "expiring_soon_count": len(item.expiring_soon_batches),
                 "total_value": item.total_value,
                 "unit_cost": item.unit_cost,
+                "daily_consumption": item.daily_consumption,
                 "locations": {}
             }
             
