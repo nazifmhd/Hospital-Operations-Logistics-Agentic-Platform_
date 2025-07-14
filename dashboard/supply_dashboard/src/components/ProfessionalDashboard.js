@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSupplyData } from '../context/SupplyDataContext';
 import { 
   Package, 
   AlertTriangle, 
@@ -19,31 +20,10 @@ import {
 
 const ProfessionalDashboard = () => {
   const navigate = useNavigate();
-  const [dashboardData, setDashboardData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { dashboardData, loading, error } = useSupplyData();
   const [actionLoading, setActionLoading] = useState(null);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [activityFilter, setActivityFilter] = useState('all');
-
-  useEffect(() => {
-    fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 30000); // Update every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchDashboardData = async () => {
-    try {
-      const response = await fetch('http://localhost:8001/api/v2/dashboard');
-      if (!response.ok) throw new Error('Failed to fetch data');
-      const data = await response.json();
-      setDashboardData(data);
-      setLoading(false);
-    } catch (err) {
-      setError(err.message);
-      setLoading(false);
-    }
-  };
 
   // Quick Action Handlers
   const handleCreatePurchaseOrder = async () => {

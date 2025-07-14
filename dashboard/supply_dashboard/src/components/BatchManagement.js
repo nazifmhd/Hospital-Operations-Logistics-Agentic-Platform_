@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSupplyData } from '../context/SupplyDataContext';
 import { 
   Package2, 
   Calendar, 
@@ -15,9 +16,9 @@ import {
 } from 'lucide-react';
 
 const BatchManagement = () => {
+  const { dashboardData, loading } = useSupplyData();
   const [batches, setBatches] = useState([]);
   const [expiringBatches, setExpiringBatches] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [filterExpiry, setFilterExpiry] = useState('ALL');
@@ -33,148 +34,126 @@ const BatchManagement = () => {
   });
 
   useEffect(() => {
-    fetchBatches();
+    // Use sample data for batches since batch tracking is not yet in shared context
+    // This should be updated when batch data is added to the WebSocket stream
+    initializeBatchData();
   }, []);
 
-  const fetchBatches = async () => {
+  const initializeBatchData = () => {
+    // Use sample data for batches since batch tracking is not yet in shared context
+    // This should be updated when batch data is added to the WebSocket stream
     try {
-      // Fetch batches with error handling
       let batchesData = [];
       let expiringData = [];
 
-      try {
-        // Use sample data until API endpoint is properly configured
-        throw new Error('Using sample data');
-        
-        const batchesRes = await fetch('http://localhost:8001/api/v2/inventory/batches');
-        
-        if (batchesRes.ok) {
-          batchesData = await batchesRes.json();
-        } else {
-          throw new Error(`API returned ${batchesRes.status}`);
+      // Provide sample batch data with proper status fields and varied expiry dates
+      const today = new Date();
+      batchesData = [
+        {
+          id: 'MED001_BTH001',
+          batch_number: 'BTH001',
+          item_id: 'MED001',
+          item_name: 'Surgical Gloves',
+          manufacturing_date: '2024-01-15',
+          expiry_date: '2026-01-15', // Good - more than 90 days
+          quantity: 500,
+          location: 'Surgery',
+          quality_status: 'active',
+          supplier_id: 'SUP001',
+          cost_per_unit: 12.50
+        },
+        {
+          id: 'MED002_BTH002',
+          batch_number: 'BTH002',
+          item_id: 'MED002',
+          item_name: 'Face Masks',
+          manufacturing_date: '2024-02-01',
+          expiry_date: '2025-08-15', // Expiring soon - within 30 days
+          quantity: 1000,
+          location: 'ICU',
+          quality_status: 'active',
+          supplier_id: 'SUP002',
+          cost_per_unit: 8.75
+        },
+        {
+          id: 'MED003_BTH003',
+          batch_number: 'BTH003',
+          item_id: 'MED003',
+          item_name: 'Blood Collection Tubes',
+          manufacturing_date: '2024-12-01',
+          expiry_date: '2025-10-01', // Warning - 30-90 days
+          quantity: 200,
+          location: 'Laboratory',
+          quality_status: 'active',
+          supplier_id: 'SUP003',
+          cost_per_unit: 15.25
+        },
+        {
+          id: 'MED004_BTH004',
+          batch_number: 'BTH004',
+          item_id: 'MED004',
+          item_name: 'IV Fluids',
+          manufacturing_date: '2024-06-01',
+          expiry_date: '2025-06-01',
+          quantity: 150,
+          location: 'ICU',
+          quality_status: 'quarantine',
+          supplier_id: 'SUP001',
+          cost_per_unit: 22.00
+        },
+        {
+          id: 'MED005_BTH005',
+          batch_number: 'BTH005',
+          item_id: 'MED005',
+          item_name: 'Antibiotics',
+          manufacturing_date: '2023-08-01',
+          expiry_date: '2025-01-01', // Expired
+          quantity: 75,
+          location: 'Pharmacy',
+          quality_status: 'active',
+          supplier_id: 'SUP004',
+          cost_per_unit: 45.00
+        },
+        {
+          id: 'MED006_BTH006',
+          batch_number: 'BTH006',
+          item_id: 'MED006',
+          item_name: 'Syringes',
+          manufacturing_date: '2023-12-01',
+          expiry_date: '2024-12-01', // Expired
+          quantity: 300,
+          location: 'Emergency',
+          quality_status: 'active',
+          supplier_id: 'SUP002',
+          cost_per_unit: 3.50
+        },
+        {
+          id: 'MED007_BTH007',
+          batch_number: 'BTH007',
+          item_id: 'MED007',
+          item_name: 'Bandages',
+          manufacturing_date: '2024-03-01',
+          expiry_date: '2027-03-01', // Good - long expiry
+          quantity: 800,
+          location: 'Emergency',
+          quality_status: 'active',
+          supplier_id: 'SUP003',
+          cost_per_unit: 5.25
         }
-      } catch (error) {
-        // Provide sample batch data with proper status fields and varied expiry dates
-        const today = new Date();
-        batchesData = [
-          {
-            id: 'MED001_BTH001',
-            batch_number: 'BTH001',
-            item_id: 'MED001',
-            item_name: 'Surgical Gloves',
-            manufacturing_date: '2024-01-15',
-            expiry_date: '2026-01-15', // Good - more than 90 days
-            quantity: 500,
-            location: 'Surgery',
-            quality_status: 'active',
-            supplier_id: 'SUP001',
-            cost_per_unit: 12.50
-          },
-          {
-            id: 'MED002_BTH002',
-            batch_number: 'BTH002',
-            item_id: 'MED002',
-            item_name: 'Face Masks',
-            manufacturing_date: '2024-02-01',
-            expiry_date: '2025-08-15', // Expiring soon - within 30 days
-            quantity: 1000,
-            location: 'ICU',
-            quality_status: 'active',
-            supplier_id: 'SUP002',
-            cost_per_unit: 8.75
-          },
-          {
-            id: 'MED003_BTH003',
-            batch_number: 'BTH003',
-            item_id: 'MED003',
-            item_name: 'Blood Collection Tubes',
-            manufacturing_date: '2024-12-01',
-            expiry_date: '2025-10-01', // Warning - 30-90 days
-            quantity: 200,
-            location: 'Laboratory',
-            quality_status: 'active',
-            supplier_id: 'SUP003',
-            cost_per_unit: 15.25
-          },
-          {
-            id: 'MED004_BTH004',
-            batch_number: 'BTH004',
-            item_id: 'MED004',
-            item_name: 'IV Fluids',
-            manufacturing_date: '2024-06-01',
-            expiry_date: '2025-06-01',
-            quantity: 150,
-            location: 'ICU',
-            quality_status: 'quarantine',
-            supplier_id: 'SUP001',
-            cost_per_unit: 22.00
-          },
-          {
-            id: 'MED005_BTH005',
-            batch_number: 'BTH005',
-            item_id: 'MED005',
-            item_name: 'Antibiotics',
-            manufacturing_date: '2023-08-01',
-            expiry_date: '2025-01-01', // Expired
-            quantity: 75,
-            location: 'Pharmacy',
-            quality_status: 'active',
-            supplier_id: 'SUP004',
-            cost_per_unit: 45.00
-          },
-          {
-            id: 'MED006_BTH006',
-            batch_number: 'BTH006',
-            item_id: 'MED006',
-            item_name: 'Syringes',
-            manufacturing_date: '2023-12-01',
-            expiry_date: '2024-12-01', // Expired
-            quantity: 300,
-            location: 'Emergency',
-            quality_status: 'active',
-            supplier_id: 'SUP002',
-            cost_per_unit: 3.50
-          },
-          {
-            id: 'MED007_BTH007',
-            batch_number: 'BTH007',
-            item_id: 'MED007',
-            item_name: 'Bandages',
-            manufacturing_date: '2024-03-01',
-            expiry_date: '2027-03-01', // Good - long expiry
-            quantity: 800,
-            location: 'Emergency',
-            quality_status: 'active',
-            supplier_id: 'SUP003',
-            cost_per_unit: 5.25
-          }
-        ];
-      }
+      ];
 
-      try {
-        const expiringRes = await fetch('http://localhost:8001/api/v2/inventory/batches/expiring');
-        
-        if (expiringRes.ok) {
-          expiringData = await expiringRes.json();
-        } else {
-          throw new Error(`Expiring API returned ${expiringRes.status}`);
-        }
-      } catch (error) {
-        // Add sample expiring batches based on our batch data
-        expiringData = batchesData.filter(batch => {
-          const expiry = new Date(batch.expiry_date);
-          const today = new Date();
-          const daysToExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
-          return daysToExpiry <= 30 && daysToExpiry > 0;
-        });
-      }
+      // Filter expiring batches based on our batch data
+      expiringData = batchesData.filter(batch => {
+        const expiry = new Date(batch.expiry_date);
+        const today = new Date();
+        const daysToExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+        return daysToExpiry <= 30 && daysToExpiry > 0;
+      });
 
       setBatches(batchesData);
       setExpiringBatches(expiringData);
-      setLoading(false);
     } catch (error) {
-      console.error('Error fetching batches:', error);
-      setLoading(false);
+      console.error('Error initializing batch data:', error);
     }
   };
 
@@ -197,7 +176,7 @@ const BatchManagement = () => {
           quantity: '',
           location_id: ''
         });
-        fetchBatches();
+        initializeBatchData();
         alert('Batch created successfully!');
       } else {
         const error = await response.json();
@@ -217,7 +196,7 @@ const BatchManagement = () => {
       });
 
       if (response.ok) {
-        fetchBatches();
+        initializeBatchData();
         alert(`Batch status updated to ${status}`);
       } else {
         const error = await response.json();

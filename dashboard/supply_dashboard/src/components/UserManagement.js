@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSupplyData } from '../context/SupplyDataContext';
 import { 
   Users, 
   UserPlus, 
@@ -17,9 +18,9 @@ import {
 } from 'lucide-react';
 
 const UserManagement = () => {
+  const { loading } = useSupplyData();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState({});
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('ALL');
   const [filterStatus, setFilterStatus] = useState('ALL');
@@ -37,9 +38,52 @@ const UserManagement = () => {
   });
 
   useEffect(() => {
-    fetchUsers();
+    initializeUserData();
     fetchRoles();
   }, []);
+
+  const initializeUserData = () => {
+    // Use sample data for users since user management data is not in shared context
+    const sampleUsers = [
+      {
+        id: 1,
+        username: 'admin',
+        email: 'admin@hospital.com',
+        full_name: 'System Administrator',
+        role: 'ADMINISTRATOR',
+        department: 'IT',
+        phone: '+1-555-0100',
+        is_active: true,
+        created_at: '2024-01-15T08:00:00Z',
+        last_login: '2025-07-14T09:30:00Z'
+      },
+      {
+        id: 2,
+        username: 'dr.smith',
+        email: 'smith@hospital.com',
+        full_name: 'Dr. Jennifer Smith',
+        role: 'INVENTORY_MANAGER',
+        department: 'Surgery',
+        phone: '+1-555-0101',
+        is_active: true,
+        created_at: '2024-02-01T08:00:00Z',
+        last_login: '2025-07-14T08:45:00Z'
+      },
+      {
+        id: 3,
+        username: 'nurse.johnson',
+        email: 'johnson@hospital.com',
+        full_name: 'Nurse Patricia Johnson',
+        role: 'STAFF',
+        department: 'ICU',
+        phone: '+1-555-0102',
+        is_active: true,
+        created_at: '2024-03-01T08:00:00Z',
+        last_login: '2025-07-13T16:20:00Z'
+      }
+    ];
+    setUsers(sampleUsers);
+  };
 
   const fetchUsers = async () => {
     try {

@@ -299,6 +299,7 @@ class AuditLog:
     after_state: Optional[Dict[str, Any]]
 
 @dataclass
+@dataclass
 class Supplier:
     """Enhanced supplier management with performance tracking"""
     supplier_id: str
@@ -1583,8 +1584,8 @@ class ProfessionalSupplyInventoryAgent:
         
         for item in self.inventory.values():
             if item.is_low_stock:
-                supplier = self.suppliers.get(item.supplier_id, {})
-                lead_time = supplier.get('lead_time_days', 7)
+                supplier = self.suppliers.get(item.supplier_id)
+                lead_time = supplier.lead_time_days if supplier else 7
                 
                 # Calculate recommended order quantity
                 avg_usage = self._get_average_usage(item.id)
@@ -1599,7 +1600,7 @@ class ProfessionalSupplyInventoryAgent:
                     'item_name': item.name,
                     'current_quantity': item.current_quantity,
                     'recommended_order': int(order_quantity),
-                    'supplier': supplier.get('name', 'Unknown'),
+                    'supplier': supplier.name if supplier else 'Unknown',
                     'estimated_cost': order_quantity * item.unit_cost,
                     'urgency': 'HIGH' if item.current_quantity < item.minimum_threshold * 0.5 else 'MEDIUM'
                 })

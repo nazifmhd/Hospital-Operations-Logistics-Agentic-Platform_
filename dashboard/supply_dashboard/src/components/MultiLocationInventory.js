@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSupplyData } from '../context/SupplyDataContext';
 import { 
   MapPin, 
   Package, 
@@ -9,10 +10,9 @@ import {
 } from 'lucide-react';
 
 const MultiLocationInventory = () => {
-  const [inventoryData, setInventoryData] = useState([]);
+  const { dashboardData, loading } = useSupplyData();
   const [locations, setLocations] = useState({});
   const [transfers, setTransfers] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [selectedLocation, setSelectedLocation] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -24,20 +24,22 @@ const MultiLocationInventory = () => {
     reason: ''
   });
 
+  // Get inventory data from shared context
+  const inventoryData = dashboardData?.inventory_by_location || [];
+
   useEffect(() => {
-    fetchData();
+    fetchAdditionalData();
   }, []);
 
-  const fetchData = async () => {
+  const fetchAdditionalData = async () => {
     try {
-      // Fetch inventory and locations
-      const [inventoryRes, locationsRes] = await Promise.all([
-        fetch('http://localhost:8001/api/v2/inventory'),
+      // Only fetch data not available in shared context (locations and transfers)
+      const [locationsRes] = await Promise.all([
         fetch('http://localhost:8001/api/v2/locations')
       ]);
 
-      const inventory = await inventoryRes.json();
       const locations = await locationsRes.json();
+      setLocations(locations);
 
       // Try to fetch transfers, but fallback to empty array if it fails
       let transfers = [];
@@ -81,13 +83,10 @@ const MultiLocationInventory = () => {
         transfers = [];
       }
 
-      setInventoryData(inventory);
       setLocations(locations);
       setTransfers(Array.isArray(transfers) ? transfers : []);
-      setLoading(false);
     } catch (error) {
-      console.error('Error fetching data:', error);
-      setLoading(false);
+      console.error('Error fetching additional data:', error);
     }
   };
 
@@ -103,7 +102,7 @@ const MultiLocationInventory = () => {
       if (response.ok) {
         setShowTransferModal(false);
         setTransferForm({ item_id: '', from_location: '', to_location: '', quantity: '', reason: '' });
-        fetchData(); // Refresh data
+        fetchAdditionalData(); // Refresh additional data
         alert('Transfer request created successfully!');
       } else {
         const error = await response.json();
