@@ -25,6 +25,7 @@ ChartJS.register(
 
 const AIMLDashboard = () => {
     const [aiStatus, setAiStatus] = useState(null);
+    const [workflowStatus, setWorkflowStatus] = useState(null);
     const [forecast, setForecast] = useState(null);
     const [anomalies, setAnomalies] = useState([]);
     const [optimization, setOptimization] = useState(null);
@@ -35,10 +36,19 @@ const AIMLDashboard = () => {
 
     useEffect(() => {
         fetchAIStatus();
+        fetchWorkflowStatus();
         fetchInventory();
         fetchAnomalies();
         fetchOptimization();
         fetchInsights();
+        
+        // Auto-refresh every 30 seconds
+        const interval = setInterval(() => {
+            fetchAIStatus();
+            fetchWorkflowStatus();
+        }, 30000);
+        
+        return () => clearInterval(interval);
     }, []);
 
     const fetchAIStatus = async () => {
@@ -48,6 +58,16 @@ const AIMLDashboard = () => {
             setAiStatus(data);
         } catch (error) {
             console.error('Error fetching AI status:', error);
+        }
+    };
+
+    const fetchWorkflowStatus = async () => {
+        try {
+            const response = await fetch('http://localhost:8000/api/v2/workflow/status');
+            const data = await response.json();
+            setWorkflowStatus(data);
+        } catch (error) {
+            console.error('Error fetching workflow status:', error);
         }
     };
 
@@ -181,18 +201,22 @@ const AIMLDashboard = () => {
                             <h2 className="text-xl font-semibold mb-2">AI/ML Engine Status</h2>
                             <div className="flex items-center space-x-4">
                                 <span className={`px-3 py-1 rounded-full text-sm ${
-                                    aiStatus?.status === 'ready' 
+                                    aiStatus?.ai_ml_available && aiStatus?.ai_ml_initialized
                                         ? 'bg-green-100 text-green-800' 
                                         : 'bg-red-100 text-red-800'
                                 }`}>
-                                    {aiStatus?.status === 'ready' ? '✅ Ready' : '❌ Not Ready'}
+                                    {aiStatus?.ai_ml_available && aiStatus?.ai_ml_initialized ? '✅ Ready' : '❌ Not Ready'}
                                 </span>
                                 <span className="text-sm text-gray-600">
-                                    Capabilities: {aiStatus?.capabilities?.length || 0}
+                                    Capabilities: {aiStatus?.ai_ml_available ? 
+                                        (aiStatus?.predictive_analytics?.enabled ? 1 : 0) + 
+                                        (aiStatus?.demand_forecasting?.enabled ? 1 : 0) + 
+                                        (aiStatus?.intelligent_optimization?.enabled ? 1 : 0) + 
+                                        (aiStatus?.autonomous_agent?.enabled ? 1 : 0) : 0}
                                 </span>
                             </div>
                         </div>
-                        {aiStatus?.status !== 'ready' && (
+                        {!(aiStatus?.ai_ml_available && aiStatus?.ai_ml_initialized) && (
                             <button
                                 onClick={initializeAI}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -202,6 +226,147 @@ const AIMLDashboard = () => {
                         )}
                     </div>
                 </div>
+
+                {/* AI/ML Capabilities Grid */}
+                {aiStatus?.ai_ml_available && aiStatus?.ai_ml_initialized && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        {/* Predictive Analytics */}
+                        <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-green-500">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center">
+                                    <span className="text-2xl mr-3">🔮</span>
+                                    <div>
+                                        <h3 className="font-semibold text-gray-900">Predictive Analytics</h3>
+                                        <p className="text-sm text-green-600">
+                                            ✅ {aiStatus?.predictive_analytics?.enabled ? 'Active' : 'Inactive'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-lg font-bold text-green-600">
+                                        {aiStatus?.predictive_analytics?.prediction_accuracy?.toFixed(1) || 0}%
+                                    </div>
+                                    <div className="text-xs text-gray-500">Accuracy</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Demand Forecasting */}
+                        <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-blue-500">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center">
+                                    <span className="text-2xl mr-3">📈</span>
+                                    <div>
+                                        <h3 className="font-semibold text-gray-900">Demand Forecasting</h3>
+                                        <p className="text-sm text-blue-600">
+                                            ✅ {aiStatus?.demand_forecasting?.enabled ? 'Ready' : 'Disabled'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-lg font-bold text-blue-600">
+                                        {aiStatus?.demand_forecasting?.forecast_horizon_days || 0}
+                                    </div>
+                                    <div className="text-xs text-gray-500">Days Horizon</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Intelligent Optimization */}
+                        <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-purple-500">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center">
+                                    <span className="text-2xl mr-3">⚡</span>
+                                    <div>
+                                        <h3 className="font-semibold text-gray-900">Smart Optimization</h3>
+                                        <p className="text-sm text-purple-600">
+                                            ✅ {aiStatus?.intelligent_optimization?.enabled ? 'Operational' : 'Disabled'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-lg font-bold text-purple-600">
+                                        {aiStatus?.intelligent_optimization?.cost_savings_achieved?.toFixed(1) || 0}%
+                                    </div>
+                                    <div className="text-xs text-gray-500">Savings</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Autonomous Operations Status */}
+                {aiStatus?.ai_ml_available && aiStatus?.ai_ml_initialized && (
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 mb-6 border border-blue-200">
+                        <div className="flex items-center mb-4">
+                            <span className="text-3xl mr-3">🤖</span>
+                            <div>
+                                <h3 className="text-xl font-semibold text-gray-900">Autonomous Operations</h3>
+                                <p className="text-blue-600">
+                                    {aiStatus?.autonomous_agent?.automation_level || '100%'} Automation Mode - 
+                                    System Making Real-time Decisions
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                            <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                                <div className="text-2xl font-bold text-green-600">
+                                    {workflowStatus?.workflow_engine?.statistics?.approved_requests || 0}
+                                </div>
+                                <div className="text-sm font-medium">Auto Approvals</div>
+                                <div className="text-xs text-gray-600">Completed</div>
+                            </div>
+                            <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                                <div className="text-2xl font-bold text-blue-600">
+                                    {workflowStatus?.auto_approval_service?.monitoring_status?.low_stock_items || 0}
+                                </div>
+                                <div className="text-sm font-medium">Inventory Monitoring</div>
+                                <div className="text-xs text-gray-600">Items Tracked</div>
+                            </div>
+                            <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                                <div className="text-2xl font-bold text-purple-600">
+                                    {Math.round(aiStatus?.predictive_analytics?.prediction_accuracy || 0)}%
+                                </div>
+                                <div className="text-sm font-medium">Prediction Accuracy</div>
+                                <div className="text-xs text-gray-600">AI Model</div>
+                            </div>
+                            <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                                <div className="text-2xl font-bold text-orange-600">
+                                    {workflowStatus?.auto_approval_service?.monitoring_status?.emergency_items || 0}
+                                </div>
+                                <div className="text-sm font-medium">Critical Alerts</div>
+                                <div className="text-xs text-gray-600">Active</div>
+                            </div>
+                        </div>
+
+                        {/* Recent Autonomous Activities */}
+                        {workflowStatus?.workflow_engine?.recent_activity?.recent_approvals && 
+                         workflowStatus.workflow_engine.recent_activity.recent_approvals.length > 0 && (
+                            <div className="mt-4">
+                                <h4 className="text-lg font-semibold text-gray-900 mb-3">
+                                    🕐 Recent Autonomous Activities
+                                </h4>
+                                <div className="bg-white rounded-lg p-4 shadow-sm">
+                                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                                        {workflowStatus.workflow_engine.recent_activity.recent_approvals.slice(0, 3).map((approval, index) => (
+                                            <div key={index} className="flex items-center justify-between p-2 bg-green-50 rounded">
+                                                <div className="flex items-center">
+                                                    <span className="text-green-600 mr-2">✅</span>
+                                                    <span className="text-sm font-medium">{approval.item_name}</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-sm text-gray-600">${approval.amount.toFixed(2)}</div>
+                                                    <div className="text-xs text-gray-500">{approval.urgency}</div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Main Content Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -308,25 +473,29 @@ const AIMLDashboard = () => {
                                     <div className="text-2xl font-bold text-blue-600">
                                         {optimization.recommendations?.length || 0}
                                     </div>
-                                    <div className="text-sm text-gray-600">Recommendations</div>
+                                    <div className="text-sm text-gray-600">Total Recommendations</div>
+                                    <div className="text-xs text-gray-500">Items to reorder</div>
                                 </div>
                                 <div className="text-center p-3 bg-green-50 rounded-lg">
                                     <div className="text-2xl font-bold text-green-600">
-                                        ${optimization.expected_savings?.toFixed(0) || 0}
+                                        ${optimization.expected_savings?.toLocaleString() || 0}
                                     </div>
                                     <div className="text-sm text-gray-600">Expected Savings</div>
+                                    <div className="text-xs text-gray-500">Cost optimization</div>
                                 </div>
                                 <div className="text-center p-3 bg-purple-50 rounded-lg">
                                     <div className="text-2xl font-bold text-purple-600">
                                         {optimization.optimization_method || 'N/A'}
                                     </div>
                                     <div className="text-sm text-gray-600">Method Used</div>
+                                    <div className="text-xs text-gray-500">AI Algorithm</div>
                                 </div>
                                 <div className="text-center p-3 bg-orange-50 rounded-lg">
                                     <div className="text-2xl font-bold text-orange-600">
-                                        {optimization.computation_time?.toFixed(2) || 0}s
+                                        {optimization.recommendations?.filter(r => r.priority === 'High').length || 0}
                                     </div>
-                                    <div className="text-sm text-gray-600">Computation Time</div>
+                                    <div className="text-sm text-gray-600">High Priority</div>
+                                    <div className="text-xs text-gray-500">Critical items</div>
                                 </div>
                             </div>
                             
@@ -342,13 +511,13 @@ const AIMLDashboard = () => {
                                                     Action
                                                 </th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Reorder Point
+                                                    Current Stock
                                                 </th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Order Quantity
+                                                    Recommended Qty
                                                 </th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Service Level
+                                                    Priority
                                                 </th>
                                             </tr>
                                         </thead>
@@ -356,19 +525,34 @@ const AIMLDashboard = () => {
                                             {optimization.recommendations.slice(0, 5).map((rec, index) => (
                                                 <tr key={index}>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                        {rec.item_id}
+                                                        <div>
+                                                            <div className="font-medium">{rec.item_name}</div>
+                                                            <div className="text-xs text-gray-500">{rec.item_id}</div>
+                                                        </div>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                        {rec.action}
+                                                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                                                            {rec.action}
+                                                        </span>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                        {rec.reorder_point?.toFixed(0) || 'N/A'}
+                                                        <span className={`font-medium ${rec.current_stock === 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                                                            {rec.current_stock}
+                                                        </span>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                        {rec.order_quantity?.toFixed(0) || 'N/A'}
+                                                        <span className="font-medium text-green-600">
+                                                            {rec.recommended_order_qty}
+                                                        </span>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                        {(rec.service_level_target * 100)?.toFixed(1) || 'N/A'}%
+                                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                                            rec.priority === 'High' ? 'bg-red-100 text-red-800' :
+                                                            rec.priority === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                                                            'bg-green-100 text-green-800'
+                                                        }`}>
+                                                            {rec.priority}
+                                                        </span>
                                                     </td>
                                                 </tr>
                                             ))}

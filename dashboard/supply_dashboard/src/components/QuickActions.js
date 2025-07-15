@@ -33,9 +33,8 @@ const QuickActions = ({ className = '' }) => {
   const handleTransferInventory = async () => {
     setActionLoading('transfer');
     try {
-      // For now, show an alert about the transfer feature
-      // In a full implementation, this would open a transfer modal or page
-      alert('Inventory Transfer feature requires authentication. This would open a transfer interface for moving items between locations.');
+      // Navigate to the transfer management page
+      navigate('/transfers');
     } catch (error) {
       console.error('Error accessing transfer functionality:', error);
     } finally {

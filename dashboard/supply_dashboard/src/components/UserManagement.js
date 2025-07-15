@@ -17,13 +17,13 @@ import {
 const UserManagement = () => {
   const { loading } = useSupplyData();
   const [users, setUsers] = useState([]);
-  const [roles, setRoles] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('ALL');
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [roles, setRoles] = useState([]);
   const [userLoading, setUserLoading] = useState(false);
   const [userForm, setUserForm] = useState({
     username: '',
@@ -433,6 +433,11 @@ const UserManagement = () => {
               className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All Roles</option>
+              {roles && typeof roles === 'object' && Object.keys(roles).map(roleKey => (
+                <option key={roleKey} value={roleKey}>
+                  {roles[roleKey].name || roleKey}
+                </option>
+              ))}
               <option value="admin">Admin</option>
               <option value="manager">Manager</option>
               <option value="staff">Staff</option>
@@ -456,6 +461,12 @@ const UserManagement = () => {
 
       {/* Users Table */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        {userLoading ? (
+          <div className="p-8 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="text-gray-600 mt-2">Loading users...</p>
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -556,6 +567,7 @@ const UserManagement = () => {
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       {/* User Modal */}

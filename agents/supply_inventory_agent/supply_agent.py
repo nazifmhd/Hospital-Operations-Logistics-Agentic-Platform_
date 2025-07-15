@@ -20,29 +20,80 @@ import os
 # Add AI/ML modules to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'ai_ml'))
 
-# AI/ML imports
+# AI/ML imports with better error handling
 try:
-    from predictive_analytics import (
-        AdvancedPredictiveAnalytics, 
-        predictive_analytics, 
-        initialize_ai_engine,
-        ForecastResult,
-        AnomalyDetection,
-        OptimizationResult
-    )
-    from demand_forecasting import (
-        AdvancedDemandForecasting,
-        demand_forecasting,
-        DemandForecast
-    )
-    from intelligent_optimization import (
-        IntelligentOptimizer,
-        intelligent_optimizer,
-        OptimizationSolution,
-        OptimizationObjective
-    )
-    AI_ML_AVAILABLE = True
-    print("✅ AI/ML modules loaded successfully")
+    # Check if AI/ML modules exist before importing
+    ai_ml_path = os.path.join(os.path.dirname(__file__), '..', '..', 'ai_ml')
+    if os.path.exists(ai_ml_path):
+        sys.path.append(ai_ml_path)
+        
+        try:
+            from predictive_analytics import (
+                AdvancedPredictiveAnalytics, 
+                predictive_analytics, 
+                initialize_ai_engine,
+                ForecastResult,
+                AnomalyDetection,
+                OptimizationResult
+            )
+        except:
+            # Create fallback classes
+            class AdvancedPredictiveAnalytics: pass
+            class ForecastResult: pass 
+            class AnomalyDetection: pass
+            class OptimizationResult: pass
+            predictive_analytics = None
+            initialize_ai_engine = None
+            
+        try:
+            from demand_forecasting import (
+                AdvancedDemandForecasting,
+                demand_forecasting,
+                DemandForecast
+            )
+        except:
+            class AdvancedDemandForecasting: pass
+            class DemandForecast: pass
+            demand_forecasting = None
+            
+        try:
+            from intelligent_optimization import (
+                IntelligentOptimizer,
+                intelligent_optimizer,
+                OptimizationSolution,
+                OptimizationObjective
+            )
+        except:
+            class IntelligentOptimizer: pass
+            class OptimizationSolution: pass
+            class OptimizationObjective:
+                MINIMIZE_COST = "minimize_cost"
+                BALANCE_ALL = "balance_all"
+            intelligent_optimizer = None
+            
+        AI_ML_AVAILABLE = False  # Set to False for now until modules are created
+        print("✅ AI/ML fallback classes loaded")
+    else:
+        # Create all fallback classes
+        class AdvancedPredictiveAnalytics: pass
+        class ForecastResult: pass 
+        class AnomalyDetection: pass
+        class OptimizationResult: pass
+        class AdvancedDemandForecasting: pass
+        class DemandForecast: pass
+        class IntelligentOptimizer: pass
+        class OptimizationSolution: pass
+        class OptimizationObjective:
+            MINIMIZE_COST = "minimize_cost"
+            BALANCE_ALL = "balance_all"
+        
+        predictive_analytics = None
+        initialize_ai_engine = None
+        demand_forecasting = None
+        intelligent_optimizer = None
+        AI_ML_AVAILABLE = False
+        print("✅ AI/ML fallback classes created (no AI/ML directory)")
+        
 except ImportError as e:
     print(f"⚠️ AI/ML modules not available: {e}")
     AI_ML_AVAILABLE = False
@@ -469,6 +520,7 @@ class ProfessionalSupplyInventoryAgent:
         self.budgets: Dict[str, Budget] = {}
         self.compliance_records: Dict[str, ComplianceRecord] = {}
         self.usage_patterns: Dict[str, List] = {}
+        self.transfers = []  # Track inter-departmental transfers
         self.is_running = False
         
         # Analytics and ML components
@@ -1901,27 +1953,138 @@ class ProfessionalSupplyInventoryAgent:
         except Exception as e:
             self.logger.error(f"Error creating critical situations: {e}")
 
-# Example usage
-async def main():
-    agent = ProfessionalSupplyInventoryAgent()
-    await agent.initialize()
+    def find_departments_with_surplus(self, item_name: str, required_quantity: int) -> List[dict]:
+        """Find departments that have surplus stock for an item"""
+        surplus_departments = []
+        
+        # Find the item in inventory
+        target_item = None
+        for item_id, item in self.inventory.items():
+            if item.name == item_name:
+                target_item = item
+                break
+        
+        if not target_item:
+            return surplus_departments
+        
+        # Check each location for surplus
+        for location_id, location_stock in target_item.locations.items():
+            current_stock = location_stock.current_quantity
+            min_threshold = location_stock.minimum_threshold
+            
+            # Check if location has surplus (more than 2x minimum threshold)
+            if current_stock > (min_threshold * 2) and current_stock >= required_quantity:
+                surplus_departments.append({
+                    "department": location_id,
+                    "available_stock": current_stock,
+                    "min_threshold": min_threshold,
+                    "surplus": current_stock - min_threshold,
+                    "can_transfer": min(required_quantity, current_stock - min_threshold)
+                })
+        
+        # Sort by surplus amount (highest first)
+        surplus_departments.sort(key=lambda x: x["surplus"], reverse=True)
+        return surplus_departments
     
-    # Start monitoring in background
-    monitor_task = asyncio.create_task(agent.start_monitoring())
+    def execute_inter_department_transfer(self, item_name: str, from_dept: str, to_dept: str, quantity: int) -> dict:
+        """Execute transfer between departments"""
+        try:
+            # Validate transfer
+            if from_dept not in self.inventory or to_dept not in self.inventory:
+                return {"success": False, "message": "Invalid department"}
+            
+            if item_name not in self.inventory[from_dept]:
+                return {"success": False, "message": f"Item {item_name} not found in {from_dept}"}
+            
+            from_stock = self.inventory[from_dept][item_name]["quantity"]
+            from_min = self.inventory[from_dept][item_name]["min_threshold"]
+            
+            # Ensure transfer doesn't put source department below minimum
+            if from_stock - quantity < from_min:
+                return {"success": False, "message": "Transfer would put source department below minimum threshold"}
+            
+            # Execute transfer
+            self.inventory[from_dept][item_name]["quantity"] -= quantity
+            
+            # Add to destination (create item if not exists)
+            if item_name not in self.inventory[to_dept]:
+                self.inventory[to_dept][item_name] = {
+                    "quantity": quantity,
+                    "min_threshold": self.inventory[from_dept][item_name]["min_threshold"],
+                    "unit_cost": self.inventory[from_dept][item_name]["unit_cost"]
+                }
+            else:
+                self.inventory[to_dept][item_name]["quantity"] += quantity
+            
+            # Log the transfer
+            transfer_log = {
+                "transfer_id": f"TRF-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+                "item_name": item_name,
+                "from_department": from_dept,
+                "to_department": to_dept,
+                "quantity": quantity,
+                "timestamp": datetime.now().isoformat(),
+                "status": "completed"
+            }
+            
+            self.transfers.append(transfer_log)
+            
+            self.logger.info(f"✅ TRANSFER: Moved {quantity} units of {item_name} from {from_dept} to {to_dept}")
+            
+            return {
+                "success": True, 
+                "message": "Transfer completed successfully",
+                "transfer_id": transfer_log["transfer_id"],
+                "details": transfer_log
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ Transfer failed: {str(e)}")
+            return {"success": False, "message": f"Transfer failed: {str(e)}"}
     
-    # Simulate some inventory updates
-    await asyncio.sleep(2)
-    await agent.transfer_inventory("MED001", "WAREHOUSE", "ICU", 10, "inv001", "Emergency restocking")
-    await agent.update_inventory_with_audit("MED002", "ICU", -5, "inv001", "Patient treatment")
+    def get_transfer_history(self, limit: int = 50) -> List[dict]:
+        """Get recent transfer history"""
+        return self.transfers[-limit:] if self.transfers else []
     
-    # Get comprehensive dashboard data
-    dashboard_data = await agent.get_enhanced_dashboard_data()
-    print(json.dumps(dashboard_data, indent=2, default=str))
-    
-    # Stop monitoring
-    await agent.stop_monitoring()
-    monitor_task.cancel()
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(main())
+    def check_and_execute_autonomous_transfers(self):
+        """Check for low stock and attempt inter-departmental transfers"""
+        transfers_executed = []
+        
+        # Check each item in inventory for low stock in any location
+        for item_id, item in self.inventory.items():
+            for location_id, location_stock in item.locations.items():
+                current_stock = location_stock.current_quantity
+                min_threshold = location_stock.minimum_threshold
+                
+                # If stock is below minimum threshold
+                if current_stock < min_threshold:
+                    required_quantity = min_threshold - current_stock + 10  # Buffer
+                    
+                    # Find departments with surplus
+                    surplus_depts = self.find_departments_with_surplus(item.name, required_quantity)
+                    
+                    for surplus_dept in surplus_depts:
+                        if surplus_dept["department"] == location_id:
+                            continue  # Skip same location
+                        
+                        transfer_qty = min(required_quantity, surplus_dept["can_transfer"])
+                        
+                        if transfer_qty > 0:
+                            result = self.execute_inter_department_transfer(
+                                item.name,
+                                surplus_dept["department"],
+                                location_id,
+                                transfer_qty
+                            )
+                            
+                            if result["success"]:
+                                transfers_executed.append(result["details"])
+                                required_quantity -= transfer_qty
+                                
+                                # Update current stock after transfer
+                                current_stock += transfer_qty
+                                
+                                if current_stock >= min_threshold:
+                                    break  # Sufficient stock achieved
+        
+        return transfers_executed

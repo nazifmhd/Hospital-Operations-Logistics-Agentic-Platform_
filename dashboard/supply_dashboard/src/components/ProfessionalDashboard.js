@@ -1,16 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSupplyData } from '../context/SupplyDataContext';
 import { 
   Package, 
   AlertTriangle, 
   TrendingUp, 
-  Users, 
   DollarSign, 
   MapPin,
   Clock,
-  CheckCircle,
-  Building,
   ShoppingCart,
   BarChart3,
   Shield,
@@ -43,9 +40,8 @@ const ProfessionalDashboard = () => {
   const handleTransferInventory = async () => {
     setActionLoading('transfer');
     try {
-      // For now, show an alert about the transfer feature
-      // In a full implementation, this would open a transfer modal or page
-      alert('Inventory Transfer feature requires authentication. This would open a transfer interface for moving items between locations.');
+      // Navigate to the transfer management page
+      navigate('/transfers');
     } catch (error) {
       console.error('Error accessing transfer functionality:', error);
     } finally {
@@ -95,7 +91,6 @@ const ProfessionalDashboard = () => {
 
   // Enhanced activity data (simulating more comprehensive activity log)
   const getAllActivities = () => {
-    const baseTime = new Date();
     return [
       { 
         id: 1,
