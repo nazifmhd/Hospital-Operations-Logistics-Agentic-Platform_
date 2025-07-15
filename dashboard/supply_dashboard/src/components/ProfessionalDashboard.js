@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSupplyData } from '../context/SupplyDataContext';
 import { 
@@ -24,15 +24,64 @@ const ProfessionalDashboard = () => {
   const [recentActivities, setRecentActivities] = useState([]);
   const [allActivities, setAllActivities] = useState([]);
 
-  // Fetch real-time activities
-  useEffect(() => {
-    fetchRecentActivities();
-    // Refresh activities every 60 seconds
-    const interval = setInterval(fetchRecentActivities, 60000);
-    return () => clearInterval(interval);
+  // Enhanced activity data (simulating more comprehensive activity log)
+  const getStaticActivities = useCallback(() => {
+    return [
+      { 
+        id: 1,
+        action: 'Inventory transfer completed', 
+        item: 'Surgical Gloves', 
+        location: 'ICU → ER', 
+        time: '5 min ago', 
+        type: 'success',
+        user: 'Dr. Smith',
+        details: '50 units transferred for emergency surgery prep'
+      },
+      { 
+        id: 2,
+        action: 'Low stock alert generated', 
+        item: 'IV Bags (1000ml)', 
+        location: 'Surgery Ward', 
+        time: '12 min ago', 
+        type: 'warning',
+        user: 'System',
+        details: 'Stock level: 193 units, below threshold of 226'
+      },
+      { 
+        id: 3,
+        action: 'Purchase order approved', 
+        item: 'PO-2025-0143', 
+        location: 'Procurement Dept', 
+        time: '1 hr ago', 
+        type: 'info',
+        user: 'Admin Johnson',
+        details: 'Total value: $2,500 for surgical supplies'
+      },
+      { 
+        id: 4,
+        action: 'Batch received and verified', 
+        item: 'Surgical Masks (50 pack)', 
+        location: 'Warehouse', 
+        time: '2 hrs ago', 
+        type: 'success',
+        user: 'Warehouse Staff',
+        details: '200 packs received, quality check passed'
+      },
+      { 
+        id: 5,
+        action: 'Compliance review completed', 
+        item: 'Pharmaceuticals', 
+        location: 'Pharmacy', 
+        time: '3 hrs ago', 
+        type: 'info',
+        user: 'Compliance Officer',
+        details: 'All medications within expiry guidelines'
+      }
+    ];
   }, []);
 
-  const fetchRecentActivities = async () => {
+  // Fetch real-time activities
+  const fetchRecentActivities = useCallback(async () => {
     try {
       // Fetch from the new real-time endpoint
       const response = await fetch('http://localhost:8000/api/v2/recent-activity');
@@ -50,7 +99,14 @@ const ProfessionalDashboard = () => {
       setRecentActivities(fallbackActivities.slice(0, 5));
       setAllActivities(fallbackActivities);
     }
-  };
+  }, [getStaticActivities]);
+
+  useEffect(() => {
+    fetchRecentActivities();
+    // Refresh activities every 60 seconds
+    const interval = setInterval(fetchRecentActivities, 60000);
+    return () => clearInterval(interval);
+  }, [fetchRecentActivities]);
 
   // Quick Action Handlers
   const handleCreatePurchaseOrder = async () => {
@@ -117,112 +173,6 @@ const ProfessionalDashboard = () => {
     } finally {
       setActionLoading(null);
     }
-  };
-
-  // Enhanced activity data (simulating more comprehensive activity log)
-  const getStaticActivities = () => {
-    return [
-      { 
-        id: 1,
-        action: 'Inventory transfer completed', 
-        item: 'Surgical Gloves', 
-        location: 'ICU → ER', 
-        time: '5 min ago', 
-        type: 'success',
-        user: 'Dr. Smith',
-        details: '50 units transferred for emergency surgery prep'
-      },
-      { 
-        id: 2,
-        action: 'Low stock alert generated', 
-        item: 'IV Bags (1000ml)', 
-        location: 'Surgery Ward', 
-        time: '12 min ago', 
-        type: 'warning',
-        user: 'System',
-        details: 'Stock level: 193 units, below threshold of 226'
-      },
-      { 
-        id: 3,
-        action: 'Purchase order approved', 
-        item: 'PO-2025-0143', 
-        location: 'Procurement Dept', 
-        time: '1 hr ago', 
-        type: 'info',
-        user: 'Admin Johnson',
-        details: 'Total value: $2,500 for surgical supplies'
-      },
-      { 
-        id: 4,
-        action: 'Batch received and verified', 
-        item: 'Surgical Masks (50 pack)', 
-        location: 'Warehouse', 
-        time: '2 hrs ago', 
-        type: 'success',
-        user: 'Warehouse Staff',
-        details: '200 packs received, quality check passed'
-      },
-      { 
-        id: 5,
-        action: 'Compliance review completed', 
-        item: 'Pharmaceuticals', 
-        location: 'Pharmacy', 
-        time: '3 hrs ago', 
-        type: 'info',
-        user: 'Compliance Officer',
-        details: 'All medications within expiry guidelines'
-      },
-      { 
-        id: 6,
-        action: 'Critical stock alert resolved', 
-        item: 'Morphine 10mg/ml', 
-        location: 'ICU', 
-        time: '4 hrs ago', 
-        type: 'success',
-        user: 'Dr. Wilson',
-        details: 'Emergency restock completed, 25 vials added'
-      },
-      { 
-        id: 7,
-        action: 'Inventory audit initiated', 
-        item: 'All PPE supplies', 
-        location: 'Multiple locations', 
-        time: '5 hrs ago', 
-        type: 'info',
-        user: 'Audit Team',
-        details: 'Quarterly audit cycle beginning'
-      },
-      { 
-        id: 8,
-        action: 'Supplier delivery delayed', 
-        item: 'Blood Collection Tubes', 
-        location: 'Lab', 
-        time: '6 hrs ago', 
-        type: 'warning',
-        user: 'Supplier ABC',
-        details: 'Expected delivery pushed to tomorrow morning'
-      },
-      { 
-        id: 9,
-        action: 'Budget allocation updated', 
-        item: 'ICU Department', 
-        location: 'Financial Dept', 
-        time: '8 hrs ago', 
-        type: 'info',
-        user: 'Finance Manager',
-        details: 'Q3 budget increased by $25,000 for equipment'
-      },
-      { 
-        id: 10,
-        action: 'Waste disposal completed', 
-        item: 'Expired medications', 
-        location: 'Pharmacy', 
-        time: '1 day ago', 
-        type: 'success',
-        user: 'Disposal Service',
-        details: '12 items properly disposed, waste reduction 15%'
-      }
-    ];
   };
 
   const handleViewAllActivities = () => {
