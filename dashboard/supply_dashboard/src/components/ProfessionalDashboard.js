@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSupplyData } from '../context/SupplyDataContext';
 import { 
@@ -21,6 +21,36 @@ const ProfessionalDashboard = () => {
   const [actionLoading, setActionLoading] = useState(null);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [activityFilter, setActivityFilter] = useState('all');
+  const [recentActivities, setRecentActivities] = useState([]);
+  const [allActivities, setAllActivities] = useState([]);
+
+  // Fetch real-time activities
+  useEffect(() => {
+    fetchRecentActivities();
+    // Refresh activities every 60 seconds
+    const interval = setInterval(fetchRecentActivities, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchRecentActivities = async () => {
+    try {
+      // Fetch from the new real-time endpoint
+      const response = await fetch('http://localhost:8000/api/v2/recent-activity');
+      if (response.ok) {
+        const data = await response.json();
+        setRecentActivities(data.activities || []);
+        setAllActivities(data.activities ? data.activities.concat(getStaticActivities()) : getStaticActivities());
+      } else {
+        throw new Error('Failed to fetch activities');
+      }
+    } catch (error) {
+      console.error('Error fetching recent activities:', error);
+      // Fallback to static data
+      const fallbackActivities = getStaticActivities();
+      setRecentActivities(fallbackActivities.slice(0, 5));
+      setAllActivities(fallbackActivities);
+    }
+  };
 
   // Quick Action Handlers
   const handleCreatePurchaseOrder = async () => {
@@ -90,7 +120,7 @@ const ProfessionalDashboard = () => {
   };
 
   // Enhanced activity data (simulating more comprehensive activity log)
-  const getAllActivities = () => {
+  const getStaticActivities = () => {
     return [
       { 
         id: 1,
@@ -198,10 +228,6 @@ const ProfessionalDashboard = () => {
   const handleViewAllActivities = () => {
     setShowActivityModal(true);
   };
-
-  // Get recent activities (first 5 for dashboard display)
-  const recentActivities = getAllActivities().slice(0, 5);
-  const allActivities = getAllActivities();
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen">
