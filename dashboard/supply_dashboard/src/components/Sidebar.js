@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { X, BarChart3, Package, AlertTriangle, Home, Settings, Users, MapPin, Archive } from 'lucide-react';
+import { X, BarChart3, Package, AlertTriangle, Home, Settings, Users, MapPin, Archive, Brain, GitBranch, ArrowLeftRight } from 'lucide-react';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
@@ -10,8 +10,11 @@ const Sidebar = ({ isOpen, onClose }) => {
     { name: 'Basic Dashboard', href: '/dashboard', icon: BarChart3 },
     { name: 'Inventory', href: '/inventory', icon: Package },
     { name: 'Multi-Location', href: '/multi-location', icon: MapPin },
+    { name: 'Transfers', href: '/transfers', icon: ArrowLeftRight },
     { name: 'Batch Management', href: '/batch-management', icon: Archive },
     { name: 'User Management', href: '/user-management', icon: Users },
+    { name: 'AI/ML Analytics', href: '/ai-ml', icon: Brain },
+    { name: 'Workflow Automation', href: '/workflow', icon: GitBranch },
     { name: 'Alerts', href: '/alerts', icon: AlertTriangle },
     { name: 'Analytics', href: '/analytics', icon: BarChart3 },
     { name: 'Settings', href: '/settings', icon: Settings },

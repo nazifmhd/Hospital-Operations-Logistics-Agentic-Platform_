@@ -35,7 +35,7 @@ const MultiLocationInventory = () => {
     try {
       // Only fetch data not available in shared context (locations and transfers)
       const [locationsRes] = await Promise.all([
-        fetch('http://localhost:8001/api/v2/locations')
+        fetch('http://localhost:8000/api/v2/locations')
       ]);
 
       const locations = await locationsRes.json();
@@ -44,7 +44,7 @@ const MultiLocationInventory = () => {
       // Try to fetch transfers, but fallback to empty array if it fails
       let transfers = [];
       try {
-        const transfersRes = await fetch('http://localhost:8001/api/v2/test-transfers');
+        const transfersRes = await fetch('http://localhost:8000/api/v2/test-transfers');
         if (transfersRes.ok) {
           const transfersData = await transfersRes.json();
           // Handle different response structures
@@ -93,7 +93,7 @@ const MultiLocationInventory = () => {
   const handleTransfer = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:8001/api/v2/inventory/transfer', {
+      const response = await fetch('http://localhost:8000/api/v2/inventory/transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(transferForm)

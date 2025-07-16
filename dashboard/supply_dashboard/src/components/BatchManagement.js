@@ -160,7 +160,7 @@ const BatchManagement = () => {
   const handleCreateBatch = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:8001/api/v2/inventory/batches', {
+      const response = await fetch('http://localhost:8000/api/v2/inventory/batches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newBatch)
@@ -189,7 +189,7 @@ const BatchManagement = () => {
 
   const handleUpdateBatchStatus = async (batchId, status) => {
     try {
-      const response = await fetch(`http://localhost:8001/api/v2/inventory/batches/${batchId}/status`, {
+      const response = await fetch(`http://localhost:8000/api/v2/inventory/batches/${batchId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })

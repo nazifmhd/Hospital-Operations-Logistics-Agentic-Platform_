@@ -33,7 +33,7 @@ const ProcurementRecommendations = ({ recommendations }) => {
         notes: "Generated from procurement recommendations"
       };
       
-      const response = await fetch('http://localhost:8001/api/v2/purchase-orders/create', {
+      const response = await fetch('http://localhost:8000/api/v2/purchase-orders/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

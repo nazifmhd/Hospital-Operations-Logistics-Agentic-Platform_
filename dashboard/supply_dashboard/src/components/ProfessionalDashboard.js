@@ -1,16 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSupplyData } from '../context/SupplyDataContext';
 import { 
   Package, 
   AlertTriangle, 
   TrendingUp, 
-  Users, 
   DollarSign, 
   MapPin,
   Clock,
-  CheckCircle,
-  Building,
   ShoppingCart,
   BarChart3,
   Shield,
@@ -24,78 +21,11 @@ const ProfessionalDashboard = () => {
   const [actionLoading, setActionLoading] = useState(null);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [activityFilter, setActivityFilter] = useState('all');
-
-  // Quick Action Handlers
-  const handleCreatePurchaseOrder = async () => {
-    setActionLoading('po');
-    try {
-      // Navigate to inventory page where purchase orders can be created from recommendations
-      navigate('/inventory');
-      // Could also show a modal or create a dedicated PO creation page
-    } catch (error) {
-      console.error('Error navigating to purchase order creation:', error);
-      alert('Failed to navigate to purchase order creation');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleTransferInventory = async () => {
-    setActionLoading('transfer');
-    try {
-      // For now, show an alert about the transfer feature
-      // In a full implementation, this would open a transfer modal or page
-      alert('Inventory Transfer feature requires authentication. This would open a transfer interface for moving items between locations.');
-    } catch (error) {
-      console.error('Error accessing transfer functionality:', error);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleReviewAlerts = () => {
-    navigate('/alerts');
-  };
-
-  const handleGenerateReport = async () => {
-    setActionLoading('report');
-    try {
-      // Navigate to analytics page which has reporting capabilities
-      navigate('/analytics');
-    } catch (error) {
-      console.error('Error navigating to reports:', error);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleComplianceCheck = async () => {
-    setActionLoading('compliance');
-    try {
-      const response = await fetch('http://localhost:8001/api/v2/analytics/compliance');
-      if (response.ok) {
-        const complianceData = await response.json();
-        alert(`Compliance Check Complete:\n\n` +
-              `• Total Items Tracked: ${complianceData.total_items_tracked}\n` +
-              `• Compliant Items: ${complianceData.compliant_items}\n` +
-              `• Pending Reviews: ${complianceData.pending_reviews}\n` +
-              `• Expired Certifications: ${complianceData.expired_certifications}\n` +
-              `• Compliance Score: ${complianceData.compliance_score}%\n\n` +
-              `Status: ${complianceData.compliance_score === 100 ? '✅ All systems compliant' : '⚠️ Issues detected'}`);
-      } else {
-        throw new Error('Failed to fetch compliance data');
-      }
-    } catch (error) {
-      console.error('Error running compliance check:', error);
-      alert('Failed to run compliance check. Please try again.');
-    } finally {
-      setActionLoading(null);
-    }
-  };
+  const [recentActivities, setRecentActivities] = useState([]);
+  const [allActivities, setAllActivities] = useState([]);
 
   // Enhanced activity data (simulating more comprehensive activity log)
-  const getAllActivities = () => {
-    const baseTime = new Date();
+  const getStaticActivities = useCallback(() => {
     return [
       { 
         id: 1,
@@ -146,67 +76,108 @@ const ProfessionalDashboard = () => {
         type: 'info',
         user: 'Compliance Officer',
         details: 'All medications within expiry guidelines'
-      },
-      { 
-        id: 6,
-        action: 'Critical stock alert resolved', 
-        item: 'Morphine 10mg/ml', 
-        location: 'ICU', 
-        time: '4 hrs ago', 
-        type: 'success',
-        user: 'Dr. Wilson',
-        details: 'Emergency restock completed, 25 vials added'
-      },
-      { 
-        id: 7,
-        action: 'Inventory audit initiated', 
-        item: 'All PPE supplies', 
-        location: 'Multiple locations', 
-        time: '5 hrs ago', 
-        type: 'info',
-        user: 'Audit Team',
-        details: 'Quarterly audit cycle beginning'
-      },
-      { 
-        id: 8,
-        action: 'Supplier delivery delayed', 
-        item: 'Blood Collection Tubes', 
-        location: 'Lab', 
-        time: '6 hrs ago', 
-        type: 'warning',
-        user: 'Supplier ABC',
-        details: 'Expected delivery pushed to tomorrow morning'
-      },
-      { 
-        id: 9,
-        action: 'Budget allocation updated', 
-        item: 'ICU Department', 
-        location: 'Financial Dept', 
-        time: '8 hrs ago', 
-        type: 'info',
-        user: 'Finance Manager',
-        details: 'Q3 budget increased by $25,000 for equipment'
-      },
-      { 
-        id: 10,
-        action: 'Waste disposal completed', 
-        item: 'Expired medications', 
-        location: 'Pharmacy', 
-        time: '1 day ago', 
-        type: 'success',
-        user: 'Disposal Service',
-        details: '12 items properly disposed, waste reduction 15%'
       }
     ];
+  }, []);
+
+  // Fetch real-time activities
+  const fetchRecentActivities = useCallback(async () => {
+    try {
+      // Fetch from the new real-time endpoint
+      const response = await fetch('http://localhost:8000/api/v2/recent-activity');
+      if (response.ok) {
+        const data = await response.json();
+        setRecentActivities(data.activities || []);
+        setAllActivities(data.activities ? data.activities.concat(getStaticActivities()) : getStaticActivities());
+      } else {
+        throw new Error('Failed to fetch activities');
+      }
+    } catch (error) {
+      console.error('Error fetching recent activities:', error);
+      // Fallback to static data
+      const fallbackActivities = getStaticActivities();
+      setRecentActivities(fallbackActivities.slice(0, 5));
+      setAllActivities(fallbackActivities);
+    }
+  }, [getStaticActivities]);
+
+  useEffect(() => {
+    fetchRecentActivities();
+    // Refresh activities every 60 seconds
+    const interval = setInterval(fetchRecentActivities, 60000);
+    return () => clearInterval(interval);
+  }, [fetchRecentActivities]);
+
+  // Quick Action Handlers
+  const handleCreatePurchaseOrder = async () => {
+    setActionLoading('po');
+    try {
+      // Navigate to inventory page where purchase orders can be created from recommendations
+      navigate('/inventory');
+      // Could also show a modal or create a dedicated PO creation page
+    } catch (error) {
+      console.error('Error navigating to purchase order creation:', error);
+      alert('Failed to navigate to purchase order creation');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleTransferInventory = async () => {
+    setActionLoading('transfer');
+    try {
+      // Navigate to the transfer management page
+      navigate('/transfers');
+    } catch (error) {
+      console.error('Error accessing transfer functionality:', error);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReviewAlerts = () => {
+    navigate('/alerts');
+  };
+
+  const handleGenerateReport = async () => {
+    setActionLoading('report');
+    try {
+      // Navigate to analytics page which has reporting capabilities
+      navigate('/analytics');
+    } catch (error) {
+      console.error('Error navigating to reports:', error);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleComplianceCheck = async () => {
+    setActionLoading('compliance');
+    try {
+      const response = await fetch('http://localhost:8000/api/v2/analytics/compliance');
+      if (response.ok) {
+        const complianceData = await response.json();
+        alert(`Compliance Check Complete:\n\n` +
+              `• Total Items Tracked: ${complianceData.total_items_tracked}\n` +
+              `• Compliant Items: ${complianceData.compliant_items}\n` +
+              `• Pending Reviews: ${complianceData.pending_reviews}\n` +
+              `• Expired Certifications: ${complianceData.expired_certifications}\n` +
+              `• Compliance Score: ${complianceData.compliance_score}%\n\n` +
+              `Status: ${complianceData.compliance_score === 100 ? '✅ All systems compliant' : '⚠️ Issues detected'}`);
+      } else {
+        throw new Error('Failed to fetch compliance data');
+      }
+    } catch (error) {
+      console.error('Error running compliance check:', error);
+      alert('Failed to run compliance check. Please try again.');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleViewAllActivities = () => {
     setShowActivityModal(true);
   };
-
-  // Get recent activities (first 5 for dashboard display)
-  const recentActivities = getAllActivities().slice(0, 5);
-  const allActivities = getAllActivities();
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen">

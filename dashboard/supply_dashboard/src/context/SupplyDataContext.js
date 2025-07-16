@@ -3,7 +3,7 @@ import axios from 'axios';
 
 const SupplyDataContext = createContext();
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 export const useSupplyData = () => {
   const context = useContext(SupplyDataContext);
@@ -21,7 +21,7 @@ export const SupplyDataProvider = ({ children }) => {
 
   // Initialize WebSocket connection
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:8001/ws`);
+    const ws = new WebSocket(`ws://localhost:8000/ws`);
     
     ws.onopen = () => {
       console.log('WebSocket connected');

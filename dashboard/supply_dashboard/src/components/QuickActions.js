@@ -33,9 +33,8 @@ const QuickActions = ({ className = '' }) => {
   const handleTransferInventory = async () => {
     setActionLoading('transfer');
     try {
-      // For now, show an alert about the transfer feature
-      // In a full implementation, this would open a transfer modal or page
-      alert('Inventory Transfer feature requires authentication. This would open a transfer interface for moving items between locations.');
+      // Navigate to the transfer management page
+      navigate('/transfers');
     } catch (error) {
       console.error('Error accessing transfer functionality:', error);
     } finally {
@@ -62,7 +61,7 @@ const QuickActions = ({ className = '' }) => {
   const handleComplianceCheck = async () => {
     setActionLoading('compliance');
     try {
-      const response = await fetch('http://localhost:8001/api/v2/analytics/compliance');
+      const response = await fetch('http://localhost:8000/api/v2/analytics/compliance');
       if (response.ok) {
         const complianceData = await response.json();
         alert(`Compliance Check Complete:\n\n` +
