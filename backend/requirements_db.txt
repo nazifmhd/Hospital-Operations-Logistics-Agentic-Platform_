@@ -1,0 +1,17 @@
+# PostgreSQL Database Dependencies for Hospital Supply System
+asyncpg==0.29.0
+sqlalchemy[asyncio]==2.0.23
+alembic==1.13.1
+psycopg2-binary==2.9.9
+
+# Existing FastAPI Dependencies (keep existing)
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+websockets==12.0
+pydantic==2.5.0
+python-multipart==0.0.6
+aiofiles==23.2.1
+
+# Additional utilities
+python-dotenv==1.0.0
+greenlet==3.0.1
