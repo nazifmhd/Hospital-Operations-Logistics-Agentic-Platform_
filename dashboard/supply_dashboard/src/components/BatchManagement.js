@@ -34,128 +34,49 @@ const BatchManagement = () => {
   });
 
   useEffect(() => {
-    // Use sample data for batches since batch tracking is not yet in shared context
-    // This should be updated when batch data is added to the WebSocket stream
-    initializeBatchData();
+    // Fetch batch data from API instead of using sample data
+    fetchBatchData();
   }, []);
 
-  const initializeBatchData = () => {
-    // Use sample data for batches since batch tracking is not yet in shared context
-    // This should be updated when batch data is added to the WebSocket stream
+  const fetchBatchData = async () => {
     try {
-      let batchesData = [];
-      let expiringData = [];
-
-      // Provide sample batch data with proper status fields and varied expiry dates
-      const today = new Date();
-      batchesData = [
-        {
-          id: 'MED001_BTH001',
-          batch_number: 'BTH001',
-          item_id: 'MED001',
-          item_name: 'Surgical Gloves',
-          manufacturing_date: '2024-01-15',
-          expiry_date: '2026-01-15', // Good - more than 90 days
-          quantity: 500,
-          location: 'Surgery',
-          quality_status: 'active',
-          supplier_id: 'SUP001',
-          cost_per_unit: 12.50
-        },
-        {
-          id: 'MED002_BTH002',
-          batch_number: 'BTH002',
-          item_id: 'MED002',
-          item_name: 'Face Masks',
-          manufacturing_date: '2024-02-01',
-          expiry_date: '2025-08-15', // Expiring soon - within 30 days
-          quantity: 1000,
-          location: 'ICU',
-          quality_status: 'active',
-          supplier_id: 'SUP002',
-          cost_per_unit: 8.75
-        },
-        {
-          id: 'MED003_BTH003',
-          batch_number: 'BTH003',
-          item_id: 'MED003',
-          item_name: 'Blood Collection Tubes',
-          manufacturing_date: '2024-12-01',
-          expiry_date: '2025-10-01', // Warning - 30-90 days
-          quantity: 200,
-          location: 'Laboratory',
-          quality_status: 'active',
-          supplier_id: 'SUP003',
-          cost_per_unit: 15.25
-        },
-        {
-          id: 'MED004_BTH004',
-          batch_number: 'BTH004',
-          item_id: 'MED004',
-          item_name: 'IV Fluids',
-          manufacturing_date: '2024-06-01',
-          expiry_date: '2025-06-01',
-          quantity: 150,
-          location: 'ICU',
-          quality_status: 'quarantine',
-          supplier_id: 'SUP001',
-          cost_per_unit: 22.00
-        },
-        {
-          id: 'MED005_BTH005',
-          batch_number: 'BTH005',
-          item_id: 'MED005',
-          item_name: 'Antibiotics',
-          manufacturing_date: '2023-08-01',
-          expiry_date: '2025-01-01', // Expired
-          quantity: 75,
-          location: 'Pharmacy',
-          quality_status: 'active',
-          supplier_id: 'SUP004',
-          cost_per_unit: 45.00
-        },
-        {
-          id: 'MED006_BTH006',
-          batch_number: 'BTH006',
-          item_id: 'MED006',
-          item_name: 'Syringes',
-          manufacturing_date: '2023-12-01',
-          expiry_date: '2024-12-01', // Expired
-          quantity: 300,
-          location: 'Emergency',
-          quality_status: 'active',
-          supplier_id: 'SUP002',
-          cost_per_unit: 3.50
-        },
-        {
-          id: 'MED007_BTH007',
-          batch_number: 'BTH007',
-          item_id: 'MED007',
-          item_name: 'Bandages',
-          manufacturing_date: '2024-03-01',
-          expiry_date: '2027-03-01', // Good - long expiry
-          quantity: 800,
-          location: 'Emergency',
-          quality_status: 'active',
-          supplier_id: 'SUP003',
-          cost_per_unit: 5.25
+      console.log('Fetching batch data from API...');
+      const response = await fetch('http://localhost:8000/api/v2/batches');
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Received batch data:', data.batches);
+        
+        if (data.batches && data.batches.length > 0) {
+          setBatches(data.batches);
+          
+          // Calculate expiring batches from API data
+          const today = new Date();
+          const expiring = data.batches.filter(batch => {
+            const expiry = new Date(batch.expiry_date);
+            const daysToExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+            return daysToExpiry <= 30 && daysToExpiry > 0;
+          });
+          setExpiringBatches(expiring);
+        } else {
+          console.warn('API returned empty batch array');
+          setBatches([]);
+          setExpiringBatches([]);
         }
-      ];
-
-      // Filter expiring batches based on our batch data
-      expiringData = batchesData.filter(batch => {
-        const expiry = new Date(batch.expiry_date);
-        const today = new Date();
-        const daysToExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
-        return daysToExpiry <= 30 && daysToExpiry > 0;
-      });
-
-      setBatches(batchesData);
-      setExpiringBatches(expiringData);
+      } else {
+        console.error('Failed to fetch batch data from API');
+        // Use fallback empty arrays
+        setBatches([]);
+        setExpiringBatches([]);
+      }
     } catch (error) {
-      console.error('Error initializing batch data:', error);
+      console.error('Error fetching batch data:', error);
+      // Use fallback empty arrays
+      setBatches([]);
+      setExpiringBatches([]);
     }
   };
+
+  // Removed initializeBatchData function - now using API data from fetchBatchData
 
   const handleCreateBatch = async (e) => {
     e.preventDefault();
@@ -176,7 +97,7 @@ const BatchManagement = () => {
           quantity: '',
           location_id: ''
         });
-        initializeBatchData();
+        fetchBatchData();
         alert('Batch created successfully!');
       } else {
         const error = await response.json();
@@ -196,7 +117,7 @@ const BatchManagement = () => {
       });
 
       if (response.ok) {
-        initializeBatchData();
+        fetchBatchData();
         alert(`Batch status updated to ${status}`);
       } else {
         const error = await response.json();

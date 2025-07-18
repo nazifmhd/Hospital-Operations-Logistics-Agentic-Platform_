@@ -23,32 +23,20 @@ const InventoryTable = () => {
 
   // Helper function to get main location for display
   const getDisplayLocation = (item) => {
-    if (!item.locations || typeof item.locations !== 'object') {
-      return 'General';
-    }
-    
-    // Find location with highest stock
-    const locations = Object.entries(item.locations);
-    if (locations.length === 0) return 'General';
-    
-    const mainLocation = locations.reduce((max, [location, data]) => {
-      const current = data?.current || 0;
-      const maxCurrent = max[1]?.current || 0;
-      return current > maxCurrent ? [location, data] : max;
-    });
-    
-    return mainLocation[0] || 'General';
+    return item.location_id || 'General';
   };
 
   // Filter inventory based on search and filters
   const filteredInventory = inventory.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.id.toLowerCase().includes(searchTerm.toLowerCase());
+                         item.item_id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = filterCategory === 'all' || item.category === filterCategory;
+    const isLowStock = item.current_stock <= item.minimum_stock;
+    const isExpired = item.expiry_date && new Date(item.expiry_date) < new Date();
     const matchesStatus = filterStatus === 'all' || 
-                         (filterStatus === 'low_stock' && item.is_low_stock) ||
-                         (filterStatus === 'expired' && item.has_expired) ||
-                         (filterStatus === 'normal' && !item.is_low_stock && !item.has_expired);
+                         (filterStatus === 'low_stock' && isLowStock) ||
+                         (filterStatus === 'expired' && isExpired) ||
+                         (filterStatus === 'normal' && !isLowStock && !isExpired);
     
     return matchesSearch && matchesCategory && matchesStatus;
   });
@@ -66,11 +54,15 @@ const InventoryTable = () => {
   };
 
   const getStatusBadge = (item) => {
-    if (item.has_expired) {
+    const isExpired = item.expiry_date && new Date(item.expiry_date) < new Date();
+    const isLowStock = item.current_stock <= item.minimum_stock;
+    const daysUntilExpiry = item.expiry_date ? Math.ceil((new Date(item.expiry_date) - new Date()) / (1000 * 60 * 60 * 24)) : null;
+    
+    if (isExpired) {
       return <span className="status-badge status-danger">Expired</span>;
-    } else if (item.is_low_stock) {
+    } else if (isLowStock) {
       return <span className="status-badge status-warning">Low Stock</span>;
-    } else if (item.expiring_soon_count && item.expiring_soon_count > 0) {
+    } else if (daysUntilExpiry && daysUntilExpiry <= 30) {
       return <span className="status-badge status-warning">Expiring Soon</span>;
     } else {
       return <span className="status-badge status-success">Normal</span>;
@@ -171,127 +163,126 @@ const InventoryTable = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredInventory.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                      <div className="text-sm text-gray-500">ID: {item.id}</div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {item.category.replace('_', ' ').toUpperCase()}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{getDisplayLocation(item)}</div>
-                    {item.locations && Object.keys(item.locations).length > 1 && (
-                      <div className="text-xs text-gray-500">
-                        +{Object.keys(item.locations).length - 1} more locations
+              {filteredInventory.map((item) => {
+                const isLowStock = item.current_stock <= item.minimum_stock;
+                const daysUntilExpiry = item.expiry_date ? Math.ceil((new Date(item.expiry_date) - new Date()) / (1000 * 60 * 60 * 24)) : null;
+                return (
+                  <tr key={item.item_id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                        <div className="text-sm text-gray-500">ID: {item.item_id}</div>
                       </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      <div className="font-medium">{item.total_quantity}</div>
-                      <div className="text-xs text-gray-500">
-                        Min: {item.minimum_threshold} | Max: {item.maximum_capacity}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {item.category.replace('_', ' ').toUpperCase()}
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-                        <div
-                          className={`h-2 rounded-full ${
-                            item.is_low_stock ? 'bg-red-500' : 'bg-green-500'
-                          }`}
-                          style={{
-                            width: `${Math.min((item.total_quantity / item.maximum_capacity) * 100, 100)}%`
-                          }}
-                        ></div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      <div className="font-medium">${item.total_value}</div>
-                      <div className="text-xs text-gray-500">
-                        ${item.unit_cost}/unit
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(item)}
-                    {item.expiring_soon_count && item.expiring_soon_count > 0 && (
-                      <div className="text-xs text-orange-600 mt-1">
-                        {item.expiring_soon_count} items expiring soon
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    {editingItem === item.id ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="number"
-                            placeholder="±Quantity"
-                            className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
-                            value={updateQuantity}
-                            onChange={(e) => setUpdateQuantity(e.target.value)}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Reason"
-                            className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
-                            value={updateReason}
-                            onChange={(e) => setUpdateReason(e.target.value)}
-                          />
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{getDisplayLocation(item)}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        <div className="font-medium">{item.current_stock}</div>
+                        <div className="text-xs text-gray-500">
+                          Min: {item.minimum_stock} | Max: {item.maximum_stock}
                         </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                          <div
+                            className={`h-2 rounded-full ${
+                              isLowStock ? 'bg-red-500' : 'bg-green-500'
+                            }`}
+                            style={{
+                              width: `${Math.min((item.current_stock / item.maximum_stock) * 100, 100)}%`
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        <div className="font-medium">${item.total_value}</div>
+                        <div className="text-xs text-gray-500">
+                          ${item.unit_cost}/unit
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {getStatusBadge(item)}
+                      {daysUntilExpiry && daysUntilExpiry <= 30 && (
+                        <div className="text-xs text-orange-600 mt-1">
+                          Expires in {daysUntilExpiry} days
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      {editingItem === item.item_id ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="number"
+                              placeholder="±Quantity"
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                              value={updateQuantity}
+                              onChange={(e) => setUpdateQuantity(e.target.value)}
+                            />
+                            <input
+                              type="text"
+                              placeholder="Reason"
+                              className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
+                              value={updateReason}
+                              onChange={(e) => setUpdateReason(e.target.value)}
+                            />
+                          </div>
+                          <div className="flex space-x-1">
+                            <button
+                              onClick={() => handleUpdateInventory(item.item_id, parseInt(updateQuantity) || 0, updateReason)}
+                              className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => setEditingItem(null)}
+                              className="px-2 py-1 bg-gray-300 text-gray-700 rounded text-xs hover:bg-gray-400"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
                         <div className="flex space-x-1">
                           <button
-                            onClick={() => handleUpdateInventory(item.id, parseInt(updateQuantity) || 0, updateReason)}
-                            className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                            onClick={() => {
+                              setEditingItem(item.item_id);
+                              setUpdateQuantity('');
+                              setUpdateReason('');
+                            }}
+                            className="p-1 text-blue-600 hover:text-blue-900"
+                            title="Edit quantity"
                           >
-                            Save
+                            <Plus className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => setEditingItem(null)}
-                            className="px-2 py-1 bg-gray-300 text-gray-700 rounded text-xs hover:bg-gray-400"
+                            onClick={() => handleUpdateInventory(item.item_id, 1, 'Manual increment')}
+                            className="p-1 text-green-600 hover:text-green-900"
+                            title="Add 1"
                           >
-                            Cancel
+                            <Plus className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleUpdateInventory(item.item_id, -1, 'Manual decrement')}
+                            className="p-1 text-red-600 hover:text-red-900"
+                            title="Remove 1"
+                          >
+                            <Minus className="h-4 w-4" />
                           </button>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="flex space-x-1">
-                        <button
-                          onClick={() => {
-                            setEditingItem(item.id);
-                            setUpdateQuantity('');
-                            setUpdateReason('');
-                          }}
-                          className="p-1 text-blue-600 hover:text-blue-900"
-                          title="Edit quantity"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleUpdateInventory(item.id, 1, 'Manual increment')}
-                          className="p-1 text-green-600 hover:text-green-900"
-                          title="Add 1"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleUpdateInventory(item.id, -1, 'Manual decrement')}
-                          className="p-1 text-red-600 hover:text-red-900"
-                          title="Remove 1"
-                        >
-                          <Minus className="h-4 w-4" />
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -313,19 +304,19 @@ const InventoryTable = () => {
           </div>
           <div>
             <div className="text-2xl font-bold text-red-600">
-              {filteredInventory.filter(item => item.is_low_stock).length}
+              {filteredInventory.filter(item => item.current_stock <= item.minimum_stock).length}
             </div>
             <div className="text-sm text-gray-500">Low Stock</div>
           </div>
           <div>
             <div className="text-2xl font-bold text-orange-600">
-              {filteredInventory.filter(item => item.has_expired).length}
+              {filteredInventory.filter(item => item.expiry_date && new Date(item.expiry_date) < new Date()).length}
             </div>
             <div className="text-sm text-gray-500">Expired</div>
           </div>
           <div>
             <div className="text-2xl font-bold text-green-600">
-              ${filteredInventory.reduce((sum, item) => sum + item.total_value, 0).toLocaleString()}
+              ${filteredInventory.reduce((sum, item) => sum + (item.total_value || 0), 0).toLocaleString()}
             </div>
             <div className="text-sm text-gray-500">Total Value</div>
           </div>

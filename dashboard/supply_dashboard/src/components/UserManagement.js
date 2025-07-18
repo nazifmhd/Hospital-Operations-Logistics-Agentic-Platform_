@@ -36,102 +36,40 @@ const UserManagement = () => {
   });
 
   useEffect(() => {
-    initializeUserData();
+    fetchUsers();
     fetchRoles();
   }, []);
 
-  const initializeUserData = () => {
-    // Use sample data for users since user management data is not in shared context
-    const sampleUsers = [
-      {
-        id: 1,
-        username: 'admin',
-        email: 'admin@hospital.com',
-        full_name: 'System Administrator',
-        role: 'ADMINISTRATOR',
-        department: 'IT',
-        phone: '+1-555-0100',
-        is_active: true,
-        created_at: '2024-01-15T08:00:00Z',
-        last_login: '2025-07-14T09:30:00Z'
-      },
-      {
-        id: 2,
-        username: 'dr.smith',
-        email: 'smith@hospital.com',
-        full_name: 'Dr. Jennifer Smith',
-        role: 'INVENTORY_MANAGER',
-        department: 'Surgery',
-        phone: '+1-555-0101',
-        is_active: true,
-        created_at: '2024-02-01T08:00:00Z',
-        last_login: '2025-07-14T08:45:00Z'
-      },
-      {
-        id: 3,
-        username: 'nurse.johnson',
-        email: 'johnson@hospital.com',
-        full_name: 'Nurse Patricia Johnson',
-        role: 'STAFF',
-        department: 'ICU',
-        phone: '+1-555-0102',
-        is_active: true,
-        created_at: '2024-03-01T08:00:00Z',
-        last_login: '2025-07-13T16:20:00Z'
-      }
-    ];
-    setUsers(sampleUsers);
-  };
-
   const fetchUsers = async () => {
+    setUserLoading(true);
     try {
       const response = await fetch('http://localhost:8000/api/v2/users');
       if (response.ok) {
         const data = await response.json();
-        setUsers(data);
+        setUsers(data.users || []);
+        console.log('Fetched users from API:', data.users);
       } else {
-        // Provide sample user data if endpoint fails
-        setUsers([
-          {
-            id: 1,
-            username: 'admin',
-            email: 'admin@hospital.com',
-            full_name: 'Hospital Administrator',
-            role: 'Admin',
-            department: 'Administration',
-            phone: '+1-555-0001',
-            is_active: true,
-            last_login: '2025-07-12T10:30:00Z'
-          },
-          {
-            id: 2,
-            username: 'manager1',
-            email: 'manager@hospital.com',
-            full_name: 'Supply Manager',
-            role: 'Manager',
-            department: 'Supply Chain',
-            phone: '+1-555-0002',
-            is_active: true,
-            last_login: '2025-07-12T09:15:00Z'
-          },
-          {
-            id: 3,
-            username: 'staff1',
-            email: 'staff@hospital.com',
-            full_name: 'ICU Staff',
-            role: 'Staff',
-            department: 'ICU',
-            phone: '+1-555-0003',
-            is_active: true,
-            last_login: '2025-07-12T08:45:00Z'
-          }
-        ]);
+        throw new Error('Failed to fetch users');
       }
-      setUserLoading(false);
     } catch (error) {
       console.error('Error fetching users:', error);
-      setUserLoading(false);
+      // Minimal fallback - just show empty state or basic admin user
+      setUsers([
+        {
+          id: 1,
+          username: 'admin',
+          email: 'admin@hospital.com',
+          full_name: 'System Administrator',
+          role: 'ADMINISTRATOR',
+          department: 'Administration',
+          phone: '+1-555-0001',
+          is_active: true,
+          created_at: '2024-01-01T08:00:00Z',
+          last_login: '2025-07-14T10:00:00Z'
+        }
+      ]);
     }
+    setUserLoading(false);
   };
 
   const fetchRoles = async () => {
@@ -139,26 +77,41 @@ const UserManagement = () => {
       const response = await fetch('http://localhost:8000/api/v2/users/roles');
       if (response.ok) {
         const data = await response.json();
-        setRoles(data);
+        // Transform API response to the format expected by the component
+        const transformedRoles = {};
+        if (data.roles && Array.isArray(data.roles)) {
+          data.roles.forEach(role => {
+            transformedRoles[role.role] = {
+              permissions: role.permissions || [],
+              color: getColorForRole(role.role)
+            };
+          });
+        }
+        setRoles(transformedRoles);
+        console.log('Fetched roles from API:', transformedRoles);
       } else {
-        // Provide sample roles data
-        setRoles({
-          'Admin': { permissions: ['all'], color: 'red' },
-          'Manager': { permissions: ['read', 'write', 'approve'], color: 'blue' },
-          'Staff': { permissions: ['read', 'write'], color: 'green' },
-          'Viewer': { permissions: ['read'], color: 'gray' }
-        });
+        throw new Error('Failed to fetch roles');
       }
     } catch (error) {
       console.error('Error fetching roles:', error);
-      // Provide sample roles data as fallback
+      // Minimal fallback roles
       setRoles({
-        'Admin': { permissions: ['all'], color: 'red' },
-        'Manager': { permissions: ['read', 'write', 'approve'], color: 'blue' },
-        'Staff': { permissions: ['read', 'write'], color: 'green' },
-        'Viewer': { permissions: ['read'], color: 'gray' }
+        'ADMINISTRATOR': { permissions: ['read', 'write', 'delete', 'manage_users'], color: 'red' },
+        'INVENTORY_MANAGER': { permissions: ['read', 'write', 'manage_inventory'], color: 'blue' },
+        'STAFF': { permissions: ['read', 'request_items'], color: 'green' }
       });
     }
+  };
+
+  const getColorForRole = (role) => {
+    const colorMap = {
+      'ADMINISTRATOR': 'red',
+      'INVENTORY_MANAGER': 'blue',
+      'DEPARTMENT_HEAD': 'purple',
+      'STAFF': 'green',
+      'TECHNICIAN': 'orange'
+    };
+    return colorMap[role] || 'gray';
   };
 
   const handleCreateUser = async (e) => {

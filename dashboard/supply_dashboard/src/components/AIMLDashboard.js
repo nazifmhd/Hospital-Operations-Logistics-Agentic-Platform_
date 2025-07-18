@@ -77,7 +77,7 @@ const AIMLDashboard = () => {
             const data = await response.json();
             setInventory(Array.isArray(data) ? data : (data.inventory || []));
             if ((Array.isArray(data) ? data : (data.inventory || [])).length > 0) {
-                setSelectedItem((Array.isArray(data) ? data : (data.inventory || []))[0].id);
+                setSelectedItem((Array.isArray(data) ? data : (data.inventory || []))[0].item_id);
             }
         } catch (error) {
             console.error('Error fetching inventory:', error);
@@ -244,7 +244,8 @@ const AIMLDashboard = () => {
                                 </div>
                                 <div className="text-right">
                                     <div className="text-lg font-bold text-green-600">
-                                        {aiStatus?.predictive_analytics?.prediction_accuracy?.toFixed(1) || 0}%
+                                        {(aiStatus?.predictive_analytics?.prediction_accuracy && typeof aiStatus.predictive_analytics.prediction_accuracy === 'number') 
+                                            ? aiStatus.predictive_analytics.prediction_accuracy.toFixed(1) : '0'}%
                                     </div>
                                     <div className="text-xs text-gray-500">Accuracy</div>
                                 </div>
@@ -286,7 +287,8 @@ const AIMLDashboard = () => {
                                 </div>
                                 <div className="text-right">
                                     <div className="text-lg font-bold text-purple-600">
-                                        {aiStatus?.intelligent_optimization?.cost_savings_achieved?.toFixed(1) || 0}%
+                                        {(aiStatus?.intelligent_optimization?.cost_savings_achieved && typeof aiStatus.intelligent_optimization.cost_savings_achieved === 'number') 
+                                            ? aiStatus.intelligent_optimization.cost_savings_achieved.toFixed(1) : '0'}%
                                     </div>
                                     <div className="text-xs text-gray-500">Savings</div>
                                 </div>
@@ -356,7 +358,9 @@ const AIMLDashboard = () => {
                                                     <span className="text-sm font-medium">{approval.item_name}</span>
                                                 </div>
                                                 <div className="text-right">
-                                                    <div className="text-sm text-gray-600">${approval.amount.toFixed(2)}</div>
+                                                    <div className="text-sm text-gray-600">
+                                                        ${(approval.amount && typeof approval.amount === 'number') ? approval.amount.toFixed(2) : '0.00'}
+                                                    </div>
                                                     <div className="text-xs text-gray-500">{approval.urgency}</div>
                                                 </div>
                                             </div>
@@ -383,7 +387,7 @@ const AIMLDashboard = () => {
                                 className="w-full p-2 border border-gray-300 rounded-md"
                             >
                                 {inventory.map(item => (
-                                    <option key={item.id} value={item.id}>
+                                    <option key={item.item_id} value={item.item_id}>
                                         {item.name}
                                     </option>
                                 ))}
@@ -416,7 +420,8 @@ const AIMLDashboard = () => {
                                         <span className="font-medium">Method:</span> {forecast.method}
                                     </div>
                                     <div>
-                                        <span className="font-medium">Accuracy:</span> {(forecast.accuracy_score * 100).toFixed(1)}%
+                                        <span className="font-medium">Accuracy:</span> {(forecast.accuracy_score && typeof forecast.accuracy_score === 'number') 
+                                            ? (forecast.accuracy_score * 100).toFixed(1) : '0'}%
                                     </div>
                                 </div>
                             </div>
@@ -444,7 +449,8 @@ const AIMLDashboard = () => {
                                             <strong>Type:</strong> {anomaly.anomaly_type}
                                         </p>
                                         <p className="text-sm text-gray-600 mb-1">
-                                            <strong>Score:</strong> {anomaly.anomaly_score.toFixed(2)}
+                                            <strong>Score:</strong> {(anomaly.anomaly_score && typeof anomaly.anomaly_score === 'number') 
+                                                ? anomaly.anomaly_score.toFixed(2) : '0.00'}
                                         </p>
                                         <p className="text-sm text-blue-600">
                                             💡 {anomaly.recommendation}
@@ -586,7 +592,8 @@ const AIMLDashboard = () => {
                                                     trend.direction === 'Decreasing' ? 'bg-red-100 text-red-800' :
                                                     'bg-gray-100 text-gray-800'
                                                 }`}>
-                                                    {trend.direction} ({trend.trend_percentage?.toFixed(1)}%)
+                                                    {trend.direction} ({(trend.trend_percentage && typeof trend.trend_percentage === 'number') 
+                                                        ? trend.trend_percentage.toFixed(1) : '0'}%)
                                                 </span>
                                             </div>
                                         ))}

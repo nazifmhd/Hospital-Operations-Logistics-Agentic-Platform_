@@ -55,30 +55,38 @@ const Analytics = () => {
     count,
     value: inventory
       .filter(item => item.category.replace('_', ' ').toUpperCase() === category)
-      .reduce((sum, item) => sum + item.total_value, 0)
+      .reduce((sum, item) => sum + (item.total_value || 0), 0)
   }));
 
   const stockLevelData = inventory.map(item => ({
     name: item.name.substring(0, 20) + (item.name.length > 20 ? '...' : ''),
-    current: item.total_quantity || 0,
-    minimum: item.minimum_threshold || 0,
-    maximum: item.maximum_capacity || 0,
-    id: item.id
+    current: item.current_stock || 0,
+    minimum: item.minimum_stock || 0,
+    maximum: item.maximum_stock || 0,
+    id: item.item_id
   }));
 
   const valueData = inventory
-    .sort((a, b) => b.total_value - a.total_value)
+    .sort((a, b) => (b.total_value || 0) - (a.total_value || 0))
     .slice(0, 10)
     .map(item => ({
       name: item.name.substring(0, 15) + (item.name.length > 15 ? '...' : ''),
-      value: item.total_value,
-      quantity: item.total_quantity || 0
+      value: item.total_value || 0,
+      quantity: item.current_stock || 0
     }));
 
+  const isLowStock = (item) => item.current_stock <= item.minimum_stock;
+  const isExpired = (item) => item.expiry_date && new Date(item.expiry_date) < new Date();
+  const isExpiringSoon = (item) => {
+    if (!item.expiry_date) return false;
+    const daysUntilExpiry = Math.ceil((new Date(item.expiry_date) - new Date()) / (1000 * 60 * 60 * 24));
+    return daysUntilExpiry <= 30 && daysUntilExpiry > 0;
+  };
+
   const pieData = [
-    { name: 'Normal Stock', value: inventory.filter(item => !item.is_low_stock && !item.has_expired).length, color: '#10B981' },
-    { name: 'Low Stock', value: inventory.filter(item => item.is_low_stock).length, color: '#F59E0B' },
-    { name: 'Expired', value: inventory.filter(item => item.has_expired).length, color: '#EF4444' },
+    { name: 'Normal Stock', value: inventory.filter(item => !isLowStock(item) && !isExpired(item)).length, color: '#10B981' },
+    { name: 'Low Stock', value: inventory.filter(item => isLowStock(item)).length, color: '#F59E0B' },
+    { name: 'Expired', value: inventory.filter(item => isExpired(item)).length, color: '#EF4444' },
   ].filter(item => item.value > 0);
 
   return (
@@ -116,7 +124,7 @@ const Analytics = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Avg Item Value</p>
               <p className="text-2xl font-bold text-gray-900">
-                ${(inventory.reduce((sum, item) => sum + item.total_value, 0) / inventory.length || 0).toFixed(0)}
+                ${(inventory.reduce((sum, item) => sum + (item.total_value || 0), 0) / inventory.length || 0).toFixed(0)}
               </p>
             </div>
           </div>
@@ -128,9 +136,9 @@ const Analytics = () => {
               <TrendingUp className="h-6 w-6 text-white" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Stock Turnover</p>
+              <p className="text-sm font-medium text-gray-600">Low Stock %</p>
               <p className="text-2xl font-bold text-gray-900">
-                {((inventory.filter(item => item.is_low_stock).length / inventory.length) * 100).toFixed(1)}%
+                {((inventory.filter(item => isLowStock(item)).length / inventory.length) * 100).toFixed(1)}%
               </p>
             </div>
           </div>
@@ -144,7 +152,7 @@ const Analytics = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Items Expiring Soon</p>
               <p className="text-2xl font-bold text-gray-900">
-                {inventory.filter(item => item.expiring_soon_count && item.expiring_soon_count > 0).length}
+                {inventory.filter(item => isExpiringSoon(item)).length}
               </p>
             </div>
           </div>
@@ -244,7 +252,7 @@ const Analytics = () => {
           >
             <option value="">Select an item to analyze</option>
             {inventory.map(item => (
-              <option key={item.id} value={item.id}>
+              <option key={item.item_id} value={item.item_id}>
                 {item.name}
               </option>
             ))}
@@ -278,7 +286,7 @@ const Analytics = () => {
               <div className="bg-gray-50 rounded-lg p-4">
                 <h5 className="text-sm font-medium text-gray-700">Projected Depletion</h5>
                 <p className="text-sm text-gray-600">
-                  {Math.round((inventory.find(item => item.id === selectedItem)?.total_quantity || 0) / (usageData.average_daily_usage || 1))} days
+                  {Math.round((inventory.find(item => item.item_id === selectedItem)?.current_stock || 0) / (usageData.average_daily_usage || 1))} days
                 </p>
               </div>
             </div>
@@ -312,15 +320,15 @@ const Analytics = () => {
               </li>
               <li className="flex items-start">
                 <span className="w-2 h-2 bg-yellow-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                {inventory.filter(item => item.is_low_stock).length} items are currently below minimum threshold
+                {inventory.filter(item => isLowStock(item)).length} items are currently below minimum threshold
               </li>
               <li className="flex items-start">
                 <span className="w-2 h-2 bg-red-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                {inventory.filter(item => item.expiring_soon_count && item.expiring_soon_count > 0).length} items have expiring batches
+                {inventory.filter(item => isExpiringSoon(item)).length} items have expiring batches
               </li>
               <li className="flex items-start">
                 <span className="w-2 h-2 bg-green-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                Total inventory value: ${inventory.reduce((sum, item) => sum + item.total_value, 0).toLocaleString()}
+                Total inventory value: ${inventory.reduce((sum, item) => sum + (item.total_value || 0), 0).toLocaleString()}
               </li>
             </ul>
           </div>
@@ -330,7 +338,7 @@ const Analytics = () => {
             <ul className="space-y-2 text-sm text-gray-600">
               <li className="flex items-start">
                 <span className="w-2 h-2 bg-orange-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                Review procurement for {inventory.filter(item => item.is_low_stock).length} low-stock items
+                Review procurement for {inventory.filter(item => isLowStock(item)).length} low-stock items
               </li>
               <li className="flex items-start">
                 <span className="w-2 h-2 bg-purple-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>

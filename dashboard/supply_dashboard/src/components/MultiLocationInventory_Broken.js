@@ -11,6 +11,7 @@ import {
 
 const MultiLocationInventory = () => {
   const { dashboardData, loading } = useSupplyData();
+  const [locations, setLocations] = useState({});
   const [transfers, setTransfers] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -49,53 +50,54 @@ const MultiLocationInventory = () => {
           } else {
             transfers = [];
           }
+        } else {
+          console.warn('Failed to fetch transfers from API, using empty array');
+          transfers = [];
         }
       } catch (transferError) {
-        console.warn('Could not fetch transfers:', transferError);
+        console.warn('Transfer endpoint not available, using empty data');
         transfers = [];
       }
+
+      setTransfers(Array.isArray(transfers) ? transfers : []);
       
-      setTransfers(transfers);
+      // Convert locations array to object for easier lookup
+      const locationsObj = {};
+      locationsData.forEach(loc => {
+        locationsObj[loc.location_id] = loc;
+      });
+      setLocations(locationsObj);
     } catch (error) {
       console.error('Error fetching additional data:', error);
     }
   };
 
-  const handleTransfer = async () => {
+  const handleTransfer = async (e) => {
+    e.preventDefault();
     try {
       const response = await fetch('http://localhost:8000/api/v2/inventory/transfer', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(transferForm)
       });
 
       if (response.ok) {
         setShowTransferModal(false);
-        setTransferForm({
-          item_id: '',
-          from_location: '',
-          to_location: '',
-          quantity: '',
-          reason: ''
-        });
-        // Refresh data
-        fetchAdditionalData();
+        setTransferForm({ item_id: '', from_location: '', to_location: '', quantity: '', reason: '' });
+        fetchAdditionalData(); // Refresh additional data
+        alert('Transfer request created successfully!');
       } else {
-        console.error('Transfer failed');
+        const error = await response.json();
+        alert(`Error: ${error.detail}`);
       }
     } catch (error) {
-      console.error('Error creating transfer:', error);
+      alert('Error creating transfer request');
     }
   };
 
-  // Filter inventory based on search and location
   const filteredInventory = inventoryData.filter(item => {
-    if (!item) return false;
-    
-    const matchesSearch = item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.item_id?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         item.item_id.toLowerCase().includes(searchTerm.toLowerCase());
     
     if (selectedLocation === 'ALL') return matchesSearch;
     
@@ -152,15 +154,15 @@ const MultiLocationInventory = () => {
               Multi-Location Inventory
             </h1>
             <p className="mt-2 text-gray-600">
-              Monitor and manage inventory across all hospital locations
+              Manage inventory across all hospital locations
             </p>
           </div>
           <button
             onClick={() => setShowTransferModal(true)}
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex items-center"
+            className="btn btn-primary flex items-center"
           >
             <ArrowLeftRight className="h-4 w-4 mr-2" />
-            Create Transfer
+            New Transfer
           </button>
         </div>
       </div>
@@ -196,34 +198,32 @@ const MultiLocationInventory = () => {
 
       {/* Filters and Search */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Search */}
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-5 w-5 text-gray-400" />
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex items-center space-x-4">
+            <div className="relative">
+              <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search items..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
-            <input
-              type="text"
-              placeholder="Search items..."
-              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+            <select
+              value={selectedLocation}
+              onChange={(e) => setSelectedLocation(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="ALL">All Locations</option>
+              {locationsData.map((location) => (
+                <option key={location.location_id} value={location.location_id}>{location.name}</option>
+              ))}
+            </select>
           </div>
-
-          {/* Location Filter */}
-          <select
-            value={selectedLocation}
-            onChange={(e) => setSelectedLocation(e.target.value)}
-            className="block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="ALL">All Locations</option>
-            {locationsData.map((location) => (
-              <option key={location.location_id} value={location.location_id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
+          <div className="text-sm text-gray-600">
+            Showing {filteredInventory.length} of {inventoryData.length} items
+          </div>
         </div>
       </div>
 
@@ -236,14 +236,13 @@ const MultiLocationInventory = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Item
                 </th>
+                {locationsData.map((location) => (
+                  <th key={location.location_id} className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {location.name}
+                  </th>
+                ))}
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Current Location
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Stock Level
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
+                  Total
                 </th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
@@ -256,47 +255,70 @@ const MultiLocationInventory = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
                       <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                      <div className="text-sm text-gray-500">ID: {item.item_id}</div>
+                      <div className="text-sm text-gray-500">SKU: {item.item_id}</div>
                       <div className="text-xs text-gray-400">{item.category}</div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="text-sm font-medium text-gray-900">
-                      {locationsData.find(loc => loc.location_id === item.location_id)?.name || item.location_id}
-                    </span>
-                  </td>
+                  {locationsData.map((location) => {
+                    // Check if this item is in this location
+                    const isInLocation = item.location_id === location.location_id;
+                    const stockLevel = isInLocation ? item.current_stock : 0;
+                    
+                    return (
+                      <td key={location.location_id} className="px-6 py-4 text-center">
+                        {isInLocation ? (
+                          <div>
+                            <span className={`text-sm font-medium ${
+                              stockLevel <= item.minimum_stock ? 'text-red-600' : 'text-gray-900'
+                            }`}>
+                              {stockLevel}
+                            </span>
+                            <div className="text-xs text-gray-500">
+                              Min: {item.minimum_stock || 0}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">N/A</span>
+                        )}
+                      </td>
+                    );
+                  })}
                   <td className="px-6 py-4 text-center">
                     <div>
-                      <span className={`text-sm font-medium ${
-                        item.current_stock <= item.minimum_stock ? 'text-red-600' : 'text-gray-900'
-                      }`}>
-                        {item.current_stock}
-                      </span>
-                      <div className="text-xs text-gray-500">
-                        Min: {item.minimum_stock || 0}
-                      </div>
+                      <span className="text-sm font-medium text-gray-900">{item.current_stock}</span>
+                      <div className="text-xs text-gray-500">Total</div>
                     </div>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    {item.current_stock <= item.minimum_stock ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        <AlertTriangle className="h-3 w-3 mr-1" />
-                        Low Stock
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        Normal
-                      </span>
-                    )}
                   </td>
                   <td className="px-6 py-4 text-center">
                     <button
                       onClick={() => {
                         setTransferForm({
                           ...transferForm,
-                          item_id: item.item_id,
-                          from_location: item.location_id
+                          item_id: item.item_id
                         });
+                        setShowTransferModal(true);
+                      }}
+                      className="bg-blue-500 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded"
+                    >
+                      Transfer
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+                      {item.total_reserved > 0 && (
+                        <div className="text-xs text-orange-600">
+                          Reserved: {item.total_reserved}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <button
+                      onClick={() => {
+                        setTransferForm(prev => ({ ...prev, item_id: item.id }));
                         setShowTransferModal(true);
                       }}
                       className="text-blue-600 hover:text-blue-800 text-sm font-medium"
@@ -328,61 +350,48 @@ const MultiLocationInventory = () => {
                   Item
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  From
+                  From → To
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  To
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Quantity
                 </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Date
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {Array.isArray(transfers) && transfers.slice(0, 5).map((transfer) => (
-                <tr key={transfer.transfer_id} className="hover:bg-gray-50">
+                <tr key={transfer.transfer_id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {transfer.transfer_id}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {transfer.item_name || transfer.item_id}
+                    {transfer.item_id}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {transfer.from_location}
+                    {locations[transfer.from_location]?.name} → {locations[transfer.to_location]?.name}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {transfer.to_location}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-900">
                     {transfer.quantity}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                       transfer.status === 'completed' ? 'bg-green-100 text-green-800' :
                       transfer.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
+                      'bg-blue-100 text-blue-800'
                     }`}>
                       {transfer.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
-                    {new Date(transfer.created_at).toLocaleDateString()}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {new Date(transfer.requested_date).toLocaleDateString()}
                   </td>
                 </tr>
               ))}
-              {(!Array.isArray(transfers) || transfers.length === 0) && (
-                <tr>
-                  <td colSpan="7" className="px-6 py-4 text-center text-gray-500">
-                    No recent transfers found
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -390,97 +399,89 @@ const MultiLocationInventory = () => {
 
       {/* Transfer Modal */}
       {showTransferModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Create Transfer</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Item</label>
-                  <select
-                    value={transferForm.item_id}
-                    onChange={(e) => setTransferForm({...transferForm, item_id: e.target.value})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                  >
-                    <option value="">Select Item</option>
-                    {inventoryData.map(item => (
-                      <option key={item.item_id} value={item.item_id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">From Location</label>
-                  <select
-                    value={transferForm.from_location}
-                    onChange={(e) => setTransferForm({...transferForm, from_location: e.target.value})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                  >
-                    <option value="">Select From Location</option>
-                    {locationsData.map((location) => (
-                      <option key={location.location_id} value={location.location_id}>
-                        {location.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">To Location</label>
-                  <select
-                    value={transferForm.to_location}
-                    onChange={(e) => setTransferForm({...transferForm, to_location: e.target.value})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                  >
-                    <option value="">Select To Location</option>
-                    {locationsData.map((location) => (
-                      <option key={location.location_id} value={location.location_id}>
-                        {location.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Quantity</label>
-                  <input
-                    type="number"
-                    value={transferForm.quantity}
-                    onChange={(e) => setTransferForm({...transferForm, quantity: e.target.value})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    placeholder="Enter quantity"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Reason</label>
-                  <textarea
-                    value={transferForm.reason}
-                    onChange={(e) => setTransferForm({...transferForm, reason: e.target.value})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                    rows="3"
-                    placeholder="Transfer reason"
-                  />
-                </div>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Create Transfer Request</h3>
+            <form onSubmit={handleTransfer} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Item</label>
+                <select
+                  value={transferForm.item_id}
+                  onChange={(e) => setTransferForm(prev => ({ ...prev, item_id: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select Item</option>
+                  {inventoryData.map(item => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
               </div>
-
-              <div className="flex justify-end space-x-2 mt-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">From Location</label>
+                <select
+                  value={transferForm.from_location}
+                  onChange={(e) => setTransferForm(prev => ({ ...prev, from_location: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select Location</option>
+                  {Object.entries(locations).map(([locId, location]) => (
+                    <option key={locId} value={locId}>{location.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">To Location</label>
+                <select
+                  value={transferForm.to_location}
+                  onChange={(e) => setTransferForm(prev => ({ ...prev, to_location: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select Location</option>
+                  {Object.entries(locations).map(([locId, location]) => (
+                    <option key={locId} value={locId}>{location.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                <input
+                  type="number"
+                  value={transferForm.quantity}
+                  onChange={(e) => setTransferForm(prev => ({ ...prev, quantity: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                  min="1"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+                <textarea
+                  value={transferForm.reason}
+                  onChange={(e) => setTransferForm(prev => ({ ...prev, reason: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows="3"
+                  required
+                />
+              </div>
+              <div className="flex justify-end space-x-3">
                 <button
+                  type="button"
                   onClick={() => setShowTransferModal(false)}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={handleTransfer}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                  type="submit"
+                  className="btn btn-primary"
                 >
                   Create Transfer
                 </button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}

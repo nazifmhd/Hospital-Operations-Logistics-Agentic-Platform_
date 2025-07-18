@@ -73,7 +73,30 @@ export const SupplyDataProvider = ({ children }) => {
     try {
       setLoading(true);
       const response = await axios.get(`${API_BASE_URL}/api/v2/dashboard`);
-      setDashboardData(response.data);
+      let data = response.data;
+      
+      // If alerts or recommendations are empty, fetch sample data
+      if (!data.alerts || data.alerts.length === 0) {
+        try {
+          const alertsResponse = await axios.get(`${API_BASE_URL}/api/v2/alerts/generate-sample`);
+          data.alerts = alertsResponse.data.alerts || [];
+        } catch (alertError) {
+          console.warn('Could not fetch sample alerts:', alertError);
+          data.alerts = [];
+        }
+      }
+      
+      if (!data.recommendations || data.recommendations.length === 0) {
+        try {
+          const recsResponse = await axios.get(`${API_BASE_URL}/api/v2/recommendations/generate-sample`);
+          data.recommendations = recsResponse.data.recommendations || [];
+        } catch (recError) {
+          console.warn('Could not fetch sample recommendations:', recError);
+          data.recommendations = [];
+        }
+      }
+      
+      setDashboardData(data);
       setError(null);
     } catch (err) {
       setError('Failed to fetch dashboard data');
@@ -93,10 +116,8 @@ export const SupplyDataProvider = ({ children }) => {
         reason: reason
       });
       
-      // Refresh data if WebSocket is not connected
-      if (!websocket) {
-        await fetchDashboardData();
-      }
+      // Always refresh data after inventory update to ensure UI is up to date
+      await fetchDashboardData();
     } catch (err) {
       throw new Error('Failed to update inventory');
     }

@@ -24,11 +24,11 @@ const ProfessionalDashboard = () => {
   const [recentActivities, setRecentActivities] = useState([]);
   const [allActivities, setAllActivities] = useState([]);
 
-  // Enhanced activity data (simulating more comprehensive activity log)
-  const getStaticActivities = useCallback(() => {
+  // Fallback activity data in case API fails
+  const getFallbackActivities = useCallback(() => {
     return [
       { 
-        id: 1,
+        id: 'fallback-1',
         action: 'Inventory transfer completed', 
         item: 'Surgical Gloves', 
         location: 'ICU → ER', 
@@ -38,7 +38,7 @@ const ProfessionalDashboard = () => {
         details: '50 units transferred for emergency surgery prep'
       },
       { 
-        id: 2,
+        id: 'fallback-2',
         action: 'Low stock alert generated', 
         item: 'IV Bags (1000ml)', 
         location: 'Surgery Ward', 
@@ -48,7 +48,7 @@ const ProfessionalDashboard = () => {
         details: 'Stock level: 193 units, below threshold of 226'
       },
       { 
-        id: 3,
+        id: 'fallback-3',
         action: 'Purchase order approved', 
         item: 'PO-2025-0143', 
         location: 'Procurement Dept', 
@@ -56,26 +56,6 @@ const ProfessionalDashboard = () => {
         type: 'info',
         user: 'Admin Johnson',
         details: 'Total value: $2,500 for surgical supplies'
-      },
-      { 
-        id: 4,
-        action: 'Batch received and verified', 
-        item: 'Surgical Masks (50 pack)', 
-        location: 'Warehouse', 
-        time: '2 hrs ago', 
-        type: 'success',
-        user: 'Warehouse Staff',
-        details: '200 packs received, quality check passed'
-      },
-      { 
-        id: 5,
-        action: 'Compliance review completed', 
-        item: 'Pharmaceuticals', 
-        location: 'Pharmacy', 
-        time: '3 hrs ago', 
-        type: 'info',
-        user: 'Compliance Officer',
-        details: 'All medications within expiry guidelines'
       }
     ];
   }, []);
@@ -87,19 +67,37 @@ const ProfessionalDashboard = () => {
       const response = await fetch('http://localhost:8000/api/v2/recent-activity');
       if (response.ok) {
         const data = await response.json();
-        setRecentActivities(data.activities || []);
-        setAllActivities(data.activities ? data.activities.concat(getStaticActivities()) : getStaticActivities());
+        console.log('Fetched activities from API:', data.activities);
+        
+        // Get real-time data from API
+        const apiActivities = data.activities || [];
+        
+        // Only use fallback if we have no or very few real activities
+        if (apiActivities.length >= 3) {
+          // If we have enough real data, use only that
+          setRecentActivities(apiActivities.slice(0, 5)); // Show 5 most recent in the dashboard
+          setAllActivities(apiActivities); // Show all in the modal
+          console.log('Using real activity data from API');
+        } else {
+          // If API returned few activities, mix with fallback for better UI
+          const fallbackActivities = getFallbackActivities();
+          // Use any real activities first, then fill with fallback
+          const combinedRecent = [...apiActivities, ...fallbackActivities].slice(0, 5);
+          setRecentActivities(combinedRecent);
+          setAllActivities(apiActivities); // Only show real data in the modal
+          console.warn('API returned few activities, displaying mixed data in dashboard');
+        }
       } else {
         throw new Error('Failed to fetch activities');
       }
     } catch (error) {
       console.error('Error fetching recent activities:', error);
       // Fallback to static data
-      const fallbackActivities = getStaticActivities();
-      setRecentActivities(fallbackActivities.slice(0, 5));
-      setAllActivities(fallbackActivities);
+      const fallbackActivities = getFallbackActivities();
+      setRecentActivities(fallbackActivities.slice(0, 3));
+      setAllActivities([]); // Don't show any activities in the modal if we can't fetch
     }
-  }, [getStaticActivities]);
+  }, [getFallbackActivities]);
 
   useEffect(() => {
     fetchRecentActivities();
