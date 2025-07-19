@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Dashboard from './components/Dashboard';
-import InventoryTable from './components/InventoryTable';
+import ComprehensiveInventoryPage from './components/ComprehensiveInventoryPage';
 import AlertsPanel from './components/AlertsPanel';
 import Analytics from './components/Analytics';
 import ProfessionalDashboard from './components/ProfessionalDashboard';
-import MultiLocationInventory from './components/MultiLocationInventory';
 import BatchManagement from './components/BatchManagement';
 import UserManagement from './components/UserManagement';
 import AIMLDashboard from './components/AIMLDashboard';
-import WorkflowAutomation from './components/WorkflowAutomation';
+import AutonomousWorkflow from './components/AutonomousWorkflow';
 import TransferManagement from './components/TransferManagement';
+import DepartmentInventory from './components/DepartmentInventory';
 import Settings from './components/Settings';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -37,12 +37,12 @@ function App() {
                 <Route path="/" element={<Navigate to="/professional" replace />} />
                 <Route path="/professional" element={<ProfessionalDashboard />} />
                 <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/inventory" element={<InventoryTable />} />
-                <Route path="/multi-location" element={<MultiLocationInventory />} />
+                <Route path="/inventory" element={<ComprehensiveInventoryPage />} />
+                <Route path="/departments" element={<DepartmentInventory />} />
                 <Route path="/batch-management" element={<BatchManagement />} />
                 <Route path="/user-management" element={<UserManagement />} />
                 <Route path="/ai-ml" element={<AIMLDashboard />} />
-                <Route path="/workflow" element={<WorkflowAutomation />} />
+                <Route path="/workflow" element={<AutonomousWorkflow />} />
                 <Route path="/transfers" element={<TransferManagement />} />
                 <Route path="/alerts" element={<AlertsPanel />} />
                 <Route path="/analytics" element={<Analytics />} />

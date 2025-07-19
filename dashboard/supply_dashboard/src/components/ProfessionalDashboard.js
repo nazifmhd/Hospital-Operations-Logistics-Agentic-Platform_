@@ -24,80 +24,60 @@ const ProfessionalDashboard = () => {
   const [recentActivities, setRecentActivities] = useState([]);
   const [allActivities, setAllActivities] = useState([]);
 
-  // Fallback activity data in case API fails
-  const getFallbackActivities = useCallback(() => {
-    return [
-      { 
-        id: 'fallback-1',
-        action: 'Inventory transfer completed', 
-        item: 'Surgical Gloves', 
-        location: 'ICU → ER', 
-        time: '5 min ago', 
-        type: 'success',
-        user: 'Dr. Smith',
-        details: '50 units transferred for emergency surgery prep'
-      },
-      { 
-        id: 'fallback-2',
-        action: 'Low stock alert generated', 
-        item: 'IV Bags (1000ml)', 
-        location: 'Surgery Ward', 
-        time: '12 min ago', 
-        type: 'warning',
-        user: 'System',
-        details: 'Stock level: 193 units, below threshold of 226'
-      },
-      { 
-        id: 'fallback-3',
-        action: 'Purchase order approved', 
-        item: 'PO-2025-0143', 
-        location: 'Procurement Dept', 
-        time: '1 hr ago', 
-        type: 'info',
-        user: 'Admin Johnson',
-        details: 'Total value: $2,500 for surgical supplies'
-      }
-    ];
-  }, []);
-
-  // Fetch real-time activities
+  // Fetch real-time activities from database only
   const fetchRecentActivities = useCallback(async () => {
     try {
-      // Fetch from the new real-time endpoint
+      // Fetch from the main recent activity endpoint only
       const response = await fetch('http://localhost:8000/api/v2/recent-activity');
+      
       if (response.ok) {
         const data = await response.json();
-        console.log('Fetched activities from API:', data.activities);
+        const activities = data.activities || [];
         
-        // Get real-time data from API
-        const apiActivities = data.activities || [];
+        // Format activities for dashboard display
+        const formattedActivities = activities.map(activity => ({
+          id: activity.id,
+          type: activity.type,
+          action: activity.action,
+          item: activity.item,
+          location: activity.location,
+          description: activity.description,
+          details: activity.details,
+          timestamp: activity.timestamp,
+          user: activity.user,
+          status: activity.status,
+          icon: activity.icon || (
+            activity.type === 'smart_distribution' ? '🎯' :
+            activity.type === 'automated_supply_action' ? '�' : '🤖'
+          ),
+          time: new Date(activity.timestamp).toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          })
+        }));
         
-        // Only use fallback if we have no or very few real activities
-        if (apiActivities.length >= 3) {
-          // If we have enough real data, use only that
-          setRecentActivities(apiActivities.slice(0, 5)); // Show 5 most recent in the dashboard
-          setAllActivities(apiActivities); // Show all in the modal
-          console.log('Using real activity data from API');
-        } else {
-          // If API returned few activities, mix with fallback for better UI
-          const fallbackActivities = getFallbackActivities();
-          // Use any real activities first, then fill with fallback
-          const combinedRecent = [...apiActivities, ...fallbackActivities].slice(0, 5);
-          setRecentActivities(combinedRecent);
-          setAllActivities(apiActivities); // Only show real data in the modal
-          console.warn('API returned few activities, displaying mixed data in dashboard');
-        }
+        setRecentActivities(formattedActivities.slice(0, 5)); // Show 5 most recent in the dashboard
+        setAllActivities(formattedActivities); // Show all in the modal
+        
+        console.log('Fetched recent activities:', formattedActivities.length);
       } else {
-        throw new Error('Failed to fetch activities');
+        console.error('Failed to fetch recent activities');
+        setRecentActivities([]);
+        setAllActivities([]);
+      }
+      
+      if (allActivities.length === 0) {
+        console.info('No activities found from any source');
+      } else {
+        console.log(`Using ${allActivities.length} activities from database and enhanced agent`);
       }
     } catch (error) {
       console.error('Error fetching recent activities:', error);
-      // Fallback to static data
-      const fallbackActivities = getFallbackActivities();
-      setRecentActivities(fallbackActivities.slice(0, 3));
-      setAllActivities([]); // Don't show any activities in the modal if we can't fetch
+      // No fallback - show empty state if all sources are unavailable
+      setRecentActivities([]);
+      setAllActivities([]);
     }
-  }, [getFallbackActivities]);
+  }, []);
 
   useEffect(() => {
     fetchRecentActivities();
@@ -110,12 +90,12 @@ const ProfessionalDashboard = () => {
   const handleCreatePurchaseOrder = async () => {
     setActionLoading('po');
     try {
-      // Navigate to inventory page where purchase orders can be created from recommendations
-      navigate('/inventory');
-      // Could also show a modal or create a dedicated PO creation page
+      // Navigate to autonomous workflow page for purchase order management
+      navigate('/workflow');
+      // The autonomous workflow page has the approval system for purchase orders
     } catch (error) {
-      console.error('Error navigating to purchase order creation:', error);
-      alert('Failed to navigate to purchase order creation');
+      console.error('Error navigating to autonomous workflow:', error);
+      alert('Failed to navigate to purchase order workflow');
     } finally {
       setActionLoading(null);
     }
@@ -521,7 +501,7 @@ const ProfessionalDashboard = () => {
                           : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                       }`}
                     >
-                      {type === 'all' ? 'All' : type.charAt(0).toUpperCase() + type.slice(1)}
+                      {type === 'all' ? 'All' : (type || '').charAt(0).toUpperCase() + (type || '').slice(1)}
                     </button>
                   ))}
                 </div>
@@ -544,7 +524,13 @@ const ProfessionalDashboard = () => {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{activity.action}</p>
                           <p className="text-sm text-gray-600 mt-1">{activity.item} • {activity.location}</p>
-                          <p className="text-xs text-gray-500 mt-2">{activity.details}</p>
+                          <p className="text-xs text-gray-500 mt-2">
+                            {typeof activity.details === 'string' ? activity.details : 
+                             typeof activity.details === 'object' && activity.details ? 
+                             `${activity.details.item_name || ''} ${activity.details.quantity ? `(${activity.details.quantity} units)` : ''} ${activity.details.department ? `in ${activity.details.department}` : ''}`.trim() :
+                             activity.description || 'Activity details'
+                            }
+                          </p>
                           <div className="flex items-center mt-2 space-x-4">
                             <span className="text-xs text-gray-400">by {activity.user}</span>
                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${

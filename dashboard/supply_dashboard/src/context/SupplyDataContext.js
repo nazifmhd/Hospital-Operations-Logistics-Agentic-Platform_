@@ -75,25 +75,15 @@ export const SupplyDataProvider = ({ children }) => {
       const response = await axios.get(`${API_BASE_URL}/api/v2/dashboard`);
       let data = response.data;
       
-      // If alerts or recommendations are empty, fetch sample data
-      if (!data.alerts || data.alerts.length === 0) {
-        try {
-          const alertsResponse = await axios.get(`${API_BASE_URL}/api/v2/alerts/generate-sample`);
-          data.alerts = alertsResponse.data.alerts || [];
-        } catch (alertError) {
-          console.warn('Could not fetch sample alerts:', alertError);
-          data.alerts = [];
-        }
+      // Ensure alerts and recommendations are arrays (they should come from database now)
+      if (!Array.isArray(data.alerts)) {
+        console.warn('Alerts data is not an array, converting to empty array');
+        data.alerts = [];
       }
       
-      if (!data.recommendations || data.recommendations.length === 0) {
-        try {
-          const recsResponse = await axios.get(`${API_BASE_URL}/api/v2/recommendations/generate-sample`);
-          data.recommendations = recsResponse.data.recommendations || [];
-        } catch (recError) {
-          console.warn('Could not fetch sample recommendations:', recError);
-          data.recommendations = [];
-        }
+      if (!Array.isArray(data.recommendations)) {
+        console.warn('Recommendations data is not an array, converting to empty array');
+        data.recommendations = [];
       }
       
       setDashboardData(data);
@@ -157,6 +147,16 @@ export const SupplyDataProvider = ({ children }) => {
     }
   };
 
+  // Get multi-location inventory
+  const getMultiLocationInventory = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/v3/inventory/multi-location`);
+      return response.data;
+    } catch (err) {
+      throw new Error('Failed to fetch multi-location inventory');
+    }
+  };
+
   const value = {
     dashboardData,
     loading,
@@ -165,6 +165,7 @@ export const SupplyDataProvider = ({ children }) => {
     resolveAlert,
     getProcurementRecommendations,
     getUsageAnalytics,
+    getMultiLocationInventory,
     refreshData: fetchDashboardData
   };
 

@@ -8,24 +8,38 @@ const Header = ({ onMenuClick }) => {
 
   const fetchNotifications = useCallback(async () => {
     try {
+      console.log('🔔 Header: Fetching notifications from /api/v2/notifications');
       const response = await fetch('http://localhost:8000/api/v2/notifications');
       if (response.ok) {
         const data = await response.json();
+        console.log('🔔 Header: Received notifications data:', data);
+        console.log('🔔 Header: Notifications count:', data.notifications ? data.notifications.length : 0);
+        console.log('🔔 Header: Unread count:', data.unread_count || 0);
+        
         setNotifications(data.notifications || []);
         setUnreadCount(data.unread_count || 0);
+      } else {
+        console.error('🔔 Header: Failed to fetch notifications, status:', response.status);
       }
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      console.error('🔔 Header: Error fetching notifications:', error);
     }
   }, []);
 
   const markAsRead = useCallback(async (notificationId) => {
     try {
+      console.log('🔔 Header: Marking notification as read:', notificationId);
       const response = await fetch(`http://localhost:8000/api/v2/notifications/${notificationId}/mark-read`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
+      
+      console.log('🔔 Header: Mark as read response status:', response.status);
+      
       if (response.ok) {
+        const result = await response.json();
+        console.log('🔔 Header: Mark as read result:', result);
+        
         // Update local state to mark as read
         setNotifications(prev => 
           prev.map(notif => 
@@ -33,39 +47,76 @@ const Header = ({ onMenuClick }) => {
           )
         );
         setUnreadCount(prev => Math.max(0, prev - 1));
+        console.log('🔔 Header: Successfully marked notification as read');
+      } else {
+        console.error('🔔 Header: Failed to mark as read, status:', response.status);
       }
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      console.error('🔔 Header: Error marking notification as read:', error);
     }
   }, []);
 
   const markAllAsRead = useCallback(async () => {
     try {
+      console.log('🔔 Header: Marking all notifications as read');
       const response = await fetch('http://localhost:8000/api/v2/notifications/mark-all-read', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
+      
+      console.log('🔔 Header: Mark all as read response status:', response.status);
+      
       if (response.ok) {
+        const result = await response.json();
+        console.log('🔔 Header: Mark all as read result:', result);
+        
         setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
         setUnreadCount(0);
+        console.log('🔔 Header: Successfully marked all notifications as read');
+      } else {
+        console.error('🔔 Header: Failed to mark all as read, status:', response.status);
       }
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+      console.error('🔔 Header: Error marking all notifications as read:', error);
     }
   }, []);
 
   const getNotificationIcon = (type) => {
     switch (type) {
+      // Critical stock alerts
       case 'critical_stock':
-      case 'quality_alert':
+      case 'low_stock':
+      case 'out_of_stock':
         return <XCircle className="h-4 w-4 text-red-500" />;
-      case 'approval_pending':
-      case 'expiry_warning':
-      case 'budget_alert':
+      
+      // Quality and safety alerts  
+      case 'quality_alert':
+      case 'batch_recall':
+      case 'temperature_alert':
+      case 'expired':
+        return <XCircle className="h-4 w-4 text-red-600" />;
+      
+      // Warning level alerts
+      case 'reorder_point':
+      case 'expiring_soon':
+      case 'supplier_delay':
+      case 'compliance':
+      case 'usage_spike':
+      case 'inventory_discrepancy':
         return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      
+      // Approval and workflow
+      case 'approval_request':
+      case 'procurement_needed':
+      case 'transfer_alert':
+        return <AlertTriangle className="h-4 w-4 text-orange-500" />;
+      
+      // Success notifications (if any)
       case 'transfer_complete':
       case 'delivery_received':
+      case 'procurement_approved':
         return <CheckCircle className="h-4 w-4 text-green-500" />;
+      
       default:
         return <Info className="h-4 w-4 text-blue-500" />;
     }
@@ -74,12 +125,15 @@ const Header = ({ onMenuClick }) => {
   const getPriorityColor = (priority) => {
     switch (priority) {
       case 'critical':
+      case 'urgent':
         return 'bg-red-500';
       case 'high':
         return 'bg-orange-500';
       case 'medium':
+      case 'warning':
         return 'bg-yellow-500';
       case 'low':
+      case 'info':
         return 'bg-blue-500';
       default:
         return 'bg-gray-500';

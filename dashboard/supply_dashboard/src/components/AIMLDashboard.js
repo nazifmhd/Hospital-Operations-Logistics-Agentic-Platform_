@@ -35,6 +35,7 @@ const AIMLDashboard = () => {
     const [inventory, setInventory] = useState([]);
 
     useEffect(() => {
+        console.log('AIMLDashboard mounted - fetching initial data...');
         fetchAIStatus();
         fetchWorkflowStatus();
         fetchInventory();
@@ -53,11 +54,22 @@ const AIMLDashboard = () => {
 
     const fetchAIStatus = async () => {
         try {
+            console.log('Fetching AI status from: http://localhost:8000/api/v2/ai/status');
             const response = await fetch('http://localhost:8000/api/v2/ai/status');
+            console.log('Response status:', response.status);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
             const data = await response.json();
+            console.log('AI Status received:', data);
+            console.log('ai_ml_available:', data.ai_ml_available);
+            console.log('ai_ml_initialized:', data.ai_ml_initialized);
             setAiStatus(data);
         } catch (error) {
             console.error('Error fetching AI status:', error);
+            setAiStatus({ error: error.message, ai_ml_available: false, ai_ml_initialized: false });
         }
     };
 
@@ -73,11 +85,20 @@ const AIMLDashboard = () => {
 
     const fetchInventory = async () => {
         try {
+            console.log('Fetching inventory...');
             const response = await fetch('http://localhost:8000/api/v2/inventory');
             const data = await response.json();
-            setInventory(Array.isArray(data) ? data : (data.inventory || []));
-            if ((Array.isArray(data) ? data : (data.inventory || [])).length > 0) {
-                setSelectedItem((Array.isArray(data) ? data : (data.inventory || []))[0].item_id);
+            console.log('Inventory data received:', data);
+            
+            // Handle different response formats: direct array, data.inventory, or data.items
+            const inventoryItems = Array.isArray(data) ? data : (data.inventory || data.items || []);
+            console.log('Processed inventory items:', inventoryItems);
+            
+            setInventory(inventoryItems);
+            if (inventoryItems.length > 0) {
+                const firstItem = inventoryItems[0].item_id;
+                console.log('Setting selected item to:', firstItem);
+                setSelectedItem(firstItem);
             }
         } catch (error) {
             console.error('Error fetching inventory:', error);
@@ -86,10 +107,12 @@ const AIMLDashboard = () => {
 
     const fetchForecast = async (itemId) => {
         if (!itemId) return;
+        console.log('Fetching forecast for item:', itemId);
         setLoading(true);
         try {
             const response = await fetch(`http://localhost:8000/api/v2/ai/forecast/${itemId}?days=30`);
             const data = await response.json();
+            console.log('Forecast data received:', data);
             setForecast(data);
         } catch (error) {
             console.error('Error fetching forecast:', error);
@@ -100,8 +123,10 @@ const AIMLDashboard = () => {
 
     const fetchAnomalies = async () => {
         try {
+            console.log('Fetching anomalies...');
             const response = await fetch('http://localhost:8000/api/v2/ai/anomalies');
             const data = await response.json();
+            console.log('Anomalies data received:', data);
             setAnomalies(data.anomalies || []);
         } catch (error) {
             console.error('Error fetching anomalies:', error);
@@ -110,8 +135,10 @@ const AIMLDashboard = () => {
 
     const fetchOptimization = async () => {
         try {
+            console.log('Fetching optimization...');
             const response = await fetch('http://localhost:8000/api/v2/ai/optimization');
             const data = await response.json();
+            console.log('Optimization data received:', data);
             setOptimization(data.optimization_results);
         } catch (error) {
             console.error('Error fetching optimization:', error);
@@ -120,8 +147,10 @@ const AIMLDashboard = () => {
 
     const fetchInsights = async () => {
         try {
+            console.log('Fetching insights...');
             const response = await fetch('http://localhost:8000/api/v2/ai/insights');
             const data = await response.json();
+            console.log('Insights data received:', data);
             setInsights(data.insights);
         } catch (error) {
             console.error('Error fetching insights:', error);
@@ -201,11 +230,18 @@ const AIMLDashboard = () => {
                             <h2 className="text-xl font-semibold mb-2">AI/ML Engine Status</h2>
                             <div className="flex items-center space-x-4">
                                 <span className={`px-3 py-1 rounded-full text-sm ${
-                                    aiStatus?.ai_ml_available && aiStatus?.ai_ml_initialized
-                                        ? 'bg-green-100 text-green-800' 
-                                        : 'bg-red-100 text-red-800'
+                                    aiStatus === null 
+                                        ? 'bg-yellow-100 text-yellow-800'
+                                        : (aiStatus?.ai_ml_available && aiStatus?.ai_ml_initialized)
+                                            ? 'bg-green-100 text-green-800' 
+                                            : 'bg-red-100 text-red-800'
                                 }`}>
-                                    {aiStatus?.ai_ml_available && aiStatus?.ai_ml_initialized ? '✅ Ready' : '❌ Not Ready'}
+                                    {aiStatus === null 
+                                        ? '🔄 Loading...' 
+                                        : ((aiStatus?.ai_ml_available && aiStatus?.ai_ml_initialized) || (aiStatus?.ai_ml_available === true && aiStatus?.ai_ml_initialized === true) 
+                                            ? '✅ Ready' 
+                                            : '❌ Not Ready')
+                                    }
                                 </span>
                                 <span className="text-sm text-gray-600">
                                     Capabilities: {aiStatus?.ai_ml_available ? 
@@ -214,8 +250,17 @@ const AIMLDashboard = () => {
                                         (aiStatus?.intelligent_optimization?.enabled ? 1 : 0) + 
                                         (aiStatus?.autonomous_agent?.enabled ? 1 : 0) : 0}
                                 </span>
+                                <button 
+                                    onClick={fetchAIStatus}
+                                    className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
+                                >
+                                    Refresh Status
+                                </button>
                             </div>
                         </div>
+                        
+                        
+                        
                         {!(aiStatus?.ai_ml_available && aiStatus?.ai_ml_initialized) && (
                             <button
                                 onClick={initializeAI}
@@ -435,25 +480,25 @@ const AIMLDashboard = () => {
                     {/* Anomaly Detection */}
                     <div className="bg-white rounded-lg shadow-sm p-6">
                         <h2 className="text-xl font-semibold mb-4">🚨 Anomaly Detection</h2>
-                        {anomalies.length > 0 ? (
+                        {anomalies && anomalies.length > 0 ? (
                             <div className="space-y-3 max-h-80 overflow-y-auto">
                                 {anomalies.map((anomaly, index) => (
-                                    <div key={index} className="border rounded-lg p-3">
+                                    <div key={index} className="border rounded-lg p-3 bg-red-50">
                                         <div className="flex items-center justify-between mb-2">
-                                            <span className="font-medium">{anomaly.item_id}</span>
+                                            <span className="font-medium">{anomaly.item_id || 'No ID'}</span>
                                             <span className={`px-2 py-1 rounded text-xs ${getSeverityColor(anomaly.severity)}`}>
-                                                {anomaly.severity}
+                                                {anomaly.severity || 'unknown'}
                                             </span>
                                         </div>
                                         <p className="text-sm text-gray-600 mb-1">
-                                            <strong>Type:</strong> {anomaly.anomaly_type}
+                                            <strong>Type:</strong> {anomaly.anomaly_type || 'unknown'}
                                         </p>
                                         <p className="text-sm text-gray-600 mb-1">
                                             <strong>Score:</strong> {(anomaly.anomaly_score && typeof anomaly.anomaly_score === 'number') 
                                                 ? anomaly.anomaly_score.toFixed(2) : '0.00'}
                                         </p>
                                         <p className="text-sm text-blue-600">
-                                            💡 {anomaly.recommendation}
+                                            💡 {anomaly.recommendation || 'No recommendation'}
                                         </p>
                                     </div>
                                 ))}
@@ -510,50 +555,72 @@ const AIMLDashboard = () => {
                                     <table className="min-w-full divide-y divide-gray-200">
                                         <thead className="bg-gray-50">
                                             <tr>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Item
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    Item Details
                                                 </th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Action
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    Action Required
                                                 </th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                     Current Stock
                                                 </th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Recommended Qty
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    Recommended Order
                                                 </th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    Reorder Point
+                                                </th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    Safety Stock
+                                                </th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                     Priority
                                                 </th>
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-gray-200">
-                                            {optimization.recommendations.slice(0, 5).map((rec, index) => (
-                                                <tr key={index}>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                            {optimization.recommendations.slice(0, 8).map((rec, index) => (
+                                                <tr key={index} className="hover:bg-gray-50">
+                                                    <td className="px-4 py-4 whitespace-nowrap text-sm">
                                                         <div>
-                                                            <div className="font-medium">{rec.item_name}</div>
+                                                            <div className="font-medium text-gray-900">{rec.item_name}</div>
                                                             <div className="text-xs text-gray-500">{rec.item_id}</div>
                                                         </div>
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                                                    <td className="px-4 py-4 whitespace-nowrap text-sm">
+                                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                                            rec.action === 'Emergency Reorder' ? 'bg-red-100 text-red-800' :
+                                                            rec.action === 'Reorder' ? 'bg-blue-100 text-blue-800' :
+                                                            'bg-green-100 text-green-800'
+                                                        }`}>
                                                             {rec.action}
                                                         </span>
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                        <span className={`font-medium ${rec.current_stock === 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                                                            {rec.current_stock}
+                                                    <td className="px-4 py-4 whitespace-nowrap text-sm">
+                                                        <span className={`font-medium ${
+                                                            rec.current_stock === 0 ? 'text-red-600' : 
+                                                            rec.current_stock < (rec.safety_stock || 50) ? 'text-orange-600' :
+                                                            'text-gray-900'
+                                                        }`}>
+                                                            {rec.current_stock || 0}
                                                         </span>
+                                                        <span className="text-xs text-gray-500 ml-1">units</span>
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    <td className="px-4 py-4 whitespace-nowrap text-sm">
                                                         <span className="font-medium text-green-600">
                                                             {rec.recommended_order_qty}
                                                         </span>
+                                                        <span className="text-xs text-gray-500 ml-1">units</span>
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
+                                                        {rec.reorder_point || 'N/A'}
+                                                    </td>
+                                                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
+                                                        {rec.safety_stock || 'N/A'}
+                                                    </td>
+                                                    <td className="px-4 py-4 whitespace-nowrap text-sm">
                                                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                                            rec.priority === 'High' ? 'bg-red-100 text-red-800' :
+                                                            rec.priority === 'High' || rec.priority === 'Critical' ? 'bg-red-100 text-red-800' :
                                                             rec.priority === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
                                                             'bg-green-100 text-green-800'
                                                         }`}>
@@ -564,6 +631,11 @@ const AIMLDashboard = () => {
                                             ))}
                                         </tbody>
                                     </table>
+                                    {optimization.recommendations.length > 8 && (
+                                        <div className="mt-3 text-center text-sm text-gray-500">
+                                            Showing 8 of {optimization.recommendations.length} recommendations
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

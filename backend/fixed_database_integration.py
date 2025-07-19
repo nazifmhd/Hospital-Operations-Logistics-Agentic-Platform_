@@ -7,6 +7,7 @@ import os
 import sys
 import asyncio
 import logging
+import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from dotenv import load_dotenv
@@ -122,12 +123,58 @@ class FixedDatabaseIntegration:
                         name
                 """))
                 inventory_items = []
+                
+                def safe_convert_to_int(value, field_name="unknown"):
+                    """Safely convert value to integer, handling lists and other types"""
+                    try:
+                        if isinstance(value, list):
+                            logger.warning(f"⚠️ {field_name} is a list: {value}, using first value")
+                            if value and len(value) > 0:
+                                return int(float(str(value[0])))
+                            return 0
+                        elif isinstance(value, (int, float)):
+                            return int(value)
+                        elif isinstance(value, str):
+                            try:
+                                return int(float(value))
+                            except ValueError:
+                                return 0
+                        elif value is None:
+                            return 0
+                        else:
+                            return 0
+                    except Exception:
+                        return 0
+                
+                def safe_convert_to_float(value, field_name="unknown"):
+                    """Safely convert value to float, handling lists and other types"""
+                    try:
+                        if isinstance(value, list):
+                            if value and len(value) > 0:
+                                return float(str(value[0]))
+                            return 0.0
+                        elif isinstance(value, (int, float)):
+                            return float(value)
+                        elif isinstance(value, str):
+                            try:
+                                return float(value)
+                            except ValueError:
+                                return 0.0
+                        elif value is None:
+                            return 0.0
+                        else:
+                            return 0.0
+                    except Exception:
+                        return 0.0
+                
                 for row in items_result.fetchall():
-                    current_stock = int(row[3]) if row[3] is not None else 0
-                    minimum_stock = int(row[4]) if row[4] is not None else 0
-                    maximum_stock = int(row[5]) if row[5] is not None else 0
-                    reorder_point = int(row[6]) if row[6] is not None else minimum_stock
-                    unit_cost = float(row[7]) if row[7] is not None else 0.0
+                    current_stock = safe_convert_to_int(row[3], "current_stock")
+                    minimum_stock = safe_convert_to_int(row[4], "minimum_stock")
+                    maximum_stock = safe_convert_to_int(row[5], "maximum_stock")
+                    reorder_point = safe_convert_to_int(row[6], "reorder_point")
+                    if reorder_point == 0:
+                        reorder_point = minimum_stock
+                    unit_cost = safe_convert_to_float(row[7], "unit_cost")
                     
                     # Determine status based on stock levels
                     status = "active"
@@ -169,6 +216,30 @@ class FixedDatabaseIntegration:
                         "batch_number": None
                     })
                 
+                # Get active alerts from database
+                alerts_result = await session.execute(text("""
+                    SELECT alert_id, alert_type, level, message, item_id, 
+                           location_id, created_at, is_resolved
+                    FROM alerts
+                    WHERE is_resolved = FALSE
+                    ORDER BY created_at DESC
+                    LIMIT 50
+                """))
+                
+                alerts_list = []
+                for alert_row in alerts_result.fetchall():
+                    alerts_list.append({
+                        "id": alert_row[0],
+                        "alert_type": alert_row[1],
+                        "level": alert_row[2] or "medium",
+                        "message": alert_row[3],
+                        "item_id": alert_row[4],
+                        "location_id": alert_row[5],
+                        "created_at": alert_row[6].isoformat() if alert_row[6] else None,
+                        "is_resolved": alert_row[7],
+                        "data_source": "database"
+                    })
+
                 return {
                     "summary": {
                         "total_items": inventory_stats[0] or 0,
@@ -182,14 +253,14 @@ class FixedDatabaseIntegration:
                             (item.get("current_stock", 0) or 0) * (item.get("unit_cost", 0.0) or 0.0) 
                             for item in inventory_items
                         )),
-                        "critical_alerts": len([item for item in inventory_items if item.get("criticality") == "critical"]),
+                        "critical_alerts": len([alert for alert in alerts_list if alert.get("level") == "critical"]),
                         "overdue_alerts": 0,
                         "pending_pos": 0,
                         "overdue_pos": 0
                     },
                     "inventory": inventory_items,  # Return as array for frontend compatibility
                     "locations": locations,
-                    "alerts": [],
+                    "alerts": alerts_list,  # Now includes actual alerts from database
                     "purchase_orders": [],
                     "recommendations": [],
                     "budget_summary": {
@@ -240,12 +311,15 @@ class FixedDatabaseIntegration:
     async def get_inventory_data(self):
         """Get inventory data from database"""
         try:
+            logger.info("🔍 Fetching inventory data from database...")
             async with self.async_session() as session:
                 result = await session.execute(text("""
                     SELECT item_id, name, category, unit_of_measure, current_stock, 
                            minimum_stock, maximum_stock, reorder_point, unit_cost, 
                            location_id, supplier_id, is_active, description
                     FROM inventory_items
+                    WHERE is_active = TRUE
+                    ORDER BY name
                 """))
                 
                 inventory_items = []
@@ -257,7 +331,7 @@ class FixedDatabaseIntegration:
                     reorder_point = int(row[7]) if row[7] is not None else 0
                     unit_cost = float(row[8]) if row[8] is not None else 0.0
                     
-                    inventory_items.append({
+                    item_data = {
                         "item_id": row[0] or "",
                         "name": row[1] or "",
                         "category": row[2] or "",
@@ -289,8 +363,15 @@ class FixedDatabaseIntegration:
                         "availability_score": 95.0,
                         "quality_score": 98.0,
                         "data_source": "database"
-                    })
+                    }
+                    
+                    # Add debug logging for items that might trigger alerts
+                    if current_stock <= minimum_stock:
+                        logger.info(f"🔴 LOW STOCK ITEM FOUND: {item_data['name']} - Current: {current_stock}, Minimum: {minimum_stock}")
+                    
+                    inventory_items.append(item_data)
                 
+                logger.info(f"✅ Successfully fetched {len(inventory_items)} inventory items")
                 return {
                     "items": inventory_items,
                     "data_source": "database",
@@ -299,6 +380,123 @@ class FixedDatabaseIntegration:
                 
         except Exception as e:
             logger.error(f"❌ Failed to get inventory data from database: {e}")
+            raise
+    
+    async def get_multi_location_inventory_data(self):
+        """Get inventory data with all locations where each item is stored"""
+        try:
+            logger.info("🔍 Fetching multi-location inventory data from database...")
+            async with self.async_session() as session:
+                # Get item details with all locations
+                result = await session.execute(text("""
+                    SELECT 
+                        i.item_id,
+                        i.name,
+                        i.category,
+                        i.unit_of_measure,
+                        i.minimum_stock,
+                        i.reorder_point,
+                        i.unit_cost,
+                        i.supplier_id,
+                        i.is_active,
+                        i.description,
+                        i.current_stock,
+                        il.location_id,
+                        COALESCE(l.name, il.location_id) as location_name,
+                        il.quantity,
+                        il.minimum_threshold,
+                        il.maximum_capacity,
+                        il.last_updated,
+                        CASE 
+                            WHEN il.quantity <= il.minimum_threshold THEN 'LOW'
+                            WHEN il.quantity >= il.maximum_capacity * 0.8 THEN 'HIGH'
+                            ELSE 'GOOD'
+                        END as stock_status
+                    FROM inventory_items i
+                    JOIN item_locations il ON i.item_id = il.item_id
+                    LEFT JOIN locations l ON il.location_id = l.location_id
+                    WHERE i.is_active = TRUE
+                    ORDER BY i.name, il.location_id
+                """))
+                
+                # Group by item_id to aggregate locations
+                items_dict = {}
+                for row in result.fetchall():
+                    item_id = row[0]
+                    
+                    if item_id not in items_dict:
+                        # Create new item entry
+                        items_dict[item_id] = {
+                            "item_id": item_id or "",
+                            "name": row[1] or "",
+                            "category": row[2] or "",
+                            "unit_of_measure": row[3] or "",
+                            "minimum_stock": int(row[4]) if row[4] is not None else 0,
+                            "reorder_point": int(row[5]) if row[5] is not None else 0,
+                            "unit_cost": float(row[6]) if row[6] is not None else 0.0,
+                            "supplier_id": row[7] or "",
+                            "is_active": bool(row[8]) if row[8] is not None else True,
+                            "description": row[9] or "",
+                            "current_stock": int(row[10]) if row[10] is not None else 0,  # Use actual current_stock from database
+                            "locations": []
+                        }
+                    
+                    # Add location details
+                    quantity = int(row[13]) if row[13] is not None else 0
+                    location_data = {
+                        "location_id": row[11] or "",
+                        "location_name": row[12] or "",
+                        "quantity": quantity,
+                        "minimum_threshold": int(row[14]) if row[14] is not None else 0,
+                        "maximum_capacity": int(row[15]) if row[15] is not None else 0,
+                        "stock_status": row[17] or "GOOD",
+                        "last_updated": row[16].isoformat() if row[16] else datetime.now().isoformat()
+                    }
+                    
+                    items_dict[item_id]["locations"].append(location_data)
+                    # Remove this line: items_dict[item_id]["current_stock"] += quantity
+                
+                # Convert to list and add additional fields
+                inventory_items = []
+                for item_data in items_dict.values():
+                    current_stock = item_data["current_stock"]
+                    unit_cost = item_data["unit_cost"]
+                    
+                    # Add computed fields
+                    item_data.update({
+                        "total_value": float(current_stock * unit_cost),
+                        "status": "active",
+                        "value_per_unit": unit_cost,
+                        "stock_percentage": 100.0,  # Multi-location doesn't have single max
+                        "days_until_stockout": 10,
+                        "supplier_name": "Unknown Supplier",
+                        "last_updated": datetime.now().isoformat(),
+                        "expiry_date": None,
+                        "batch_number": None,
+                        "usage_rate": 8.5,
+                        "cost_per_day": float(unit_cost * 8.5),
+                        "monthly_consumption": float(current_stock * 0.3),
+                        "annual_cost": float(unit_cost * current_stock * 12),
+                        "criticality_score": 85.0,
+                        "availability_score": 95.0,
+                        "quality_score": 98.0,
+                        "data_source": "database_multi_location"
+                    })
+                    
+                    # Add location count for better visibility
+                    item_data["location_count"] = len(item_data["locations"])
+                    
+                    inventory_items.append(item_data)
+                
+                logger.info(f"✅ Successfully fetched {len(inventory_items)} multi-location inventory items")
+                return {
+                    "items": inventory_items,
+                    "data_source": "database_multi_location",
+                    "last_updated": datetime.now().isoformat()
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to get multi-location inventory data from database: {e}")
             raise
     
     async def get_transfers_data(self):
@@ -316,13 +514,17 @@ class FixedDatabaseIntegration:
                     transfers.append({
                         "transfer_id": row[0],
                         "item_id": row[1],
+                        "item_name": f"Item-{row[1]}",  # Simplified - could join with items table
                         "from_location": row[2],
+                        "from_location_name": row[2],
                         "to_location": row[3],
+                        "to_location_name": row[3],
                         "quantity": row[4],
                         "status": row[5],
                         "requested_by": row[6],
-                        "requested_date": row[7].isoformat() if row[7] else None,
+                        "timestamp": row[7].isoformat() if row[7] else None,
                         "reason": row[8],
+                        "priority": "medium",  # Default priority
                         "data_source": "database"
                     })
                 
@@ -332,6 +534,112 @@ class FixedDatabaseIntegration:
             logger.error(f"❌ Failed to get transfers data from database: {e}")
             raise
     
+    async def store_transfer_record(self, transfer_id: str, item_id: str, from_location: str, 
+                                  to_location: str, quantity: int, reason: str = "", priority: str = "medium"):
+        """Store transfer record in database"""
+        try:
+            async with self.async_session() as session:
+                # Insert transfer record
+                await session.execute(text("""
+                    INSERT INTO transfers (transfer_id, item_id, from_location_id, to_location_id, 
+                                         quantity, reason, priority, status, requested_date, requested_by)
+                    VALUES (:transfer_id, :item_id, :from_location, :to_location, 
+                           :quantity, :reason, :priority, 'completed', NOW(), 'manual_user')
+                """), {
+                    "transfer_id": transfer_id,
+                    "item_id": item_id,
+                    "from_location": from_location,
+                    "to_location": to_location,
+                    "quantity": quantity,
+                    "reason": reason,
+                    "priority": priority
+                })
+                await session.commit()
+                logger.info(f"✅ Transfer {transfer_id} stored in database")
+                return True
+        except Exception as e:
+            logger.error(f"❌ Failed to store transfer record: {e}")
+            return False
+
+    async def execute_inventory_transfer(self, item_id: str, from_location: str, to_location: str, quantity: int):
+        """Execute actual inventory transfer between locations"""
+        try:
+            async with self.async_session() as session:
+                # Check if source location has enough inventory
+                source_check = await session.execute(text("""
+                    SELECT quantity FROM item_locations 
+                    WHERE item_id = :item_id AND location_id = :from_location
+                """), {"item_id": item_id, "from_location": from_location})
+                
+                source_row = source_check.fetchone()
+                if not source_row:
+                    logger.warning(f"❌ Source location not found for transfer: {item_id} at {from_location}")
+                    return False
+                    
+                # Safely extract quantity with type checking
+                available_quantity = source_row[0]
+                if isinstance(available_quantity, list):
+                    logger.warning(f"⚠️ Available quantity is a list: {available_quantity}, using first value")
+                    available_quantity = int(available_quantity[0]) if available_quantity and isinstance(available_quantity[0], (int, float, str)) else 0
+                elif not isinstance(available_quantity, (int, float)):
+                    logger.warning(f"⚠️ Available quantity is not numeric: {available_quantity} (type: {type(available_quantity)}), using 0")
+                    available_quantity = 0
+                else:
+                    available_quantity = int(available_quantity)
+                    
+                if available_quantity < quantity:
+                    logger.warning(f"❌ Insufficient inventory for transfer: {item_id} at {from_location} - Available: {available_quantity}, Requested: {quantity}")
+                    return False
+                
+                # Subtract from source location
+                await session.execute(text("""
+                    UPDATE item_locations 
+                    SET quantity = quantity - :quantity
+                    WHERE item_id = :item_id AND location_id = :from_location
+                """), {
+                    "quantity": quantity,
+                    "item_id": item_id,
+                    "from_location": from_location
+                })
+                
+                # Check if destination location already has this item
+                dest_check = await session.execute(text("""
+                    SELECT quantity FROM item_locations 
+                    WHERE item_id = :item_id AND location_id = :to_location
+                """), {"item_id": item_id, "to_location": to_location})
+                
+                dest_row = dest_check.fetchone()
+                
+                if dest_row:
+                    # Add to existing location
+                    await session.execute(text("""
+                        UPDATE item_locations 
+                        SET quantity = quantity + :quantity
+                        WHERE item_id = :item_id AND location_id = :to_location
+                    """), {
+                        "quantity": quantity,
+                        "item_id": item_id,
+                        "to_location": to_location
+                    })
+                else:
+                    # Create new location entry
+                    await session.execute(text("""
+                        INSERT INTO item_locations (item_id, location_id, quantity, minimum_threshold, maximum_threshold)
+                        VALUES (:item_id, :to_location, :quantity, 10, 100)
+                    """), {
+                        "item_id": item_id,
+                        "to_location": to_location,
+                        "quantity": quantity
+                    })
+                
+                await session.commit()
+                logger.info(f"✅ Successfully transferred {quantity} units of {item_id} from {from_location} to {to_location}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to execute inventory transfer: {e}")
+            return False
+    
     async def get_alerts_data(self):
         """Get alerts data from database"""
         try:
@@ -340,12 +648,14 @@ class FixedDatabaseIntegration:
                     SELECT alert_id, alert_type, level, message, item_id, 
                            location_id, created_at, is_resolved
                     FROM alerts
+                    WHERE is_resolved = FALSE
+                    ORDER BY created_at DESC
                 """))
                 
                 alerts = []
                 for row in result.fetchall():
                     alerts.append({
-                        "alert_id": row[0],
+                        "id": row[0],
                         "alert_type": row[1],
                         "level": row[2],
                         "message": row[3],
@@ -356,7 +666,11 @@ class FixedDatabaseIntegration:
                         "data_source": "database"
                     })
                 
-                return alerts
+                return {
+                    "alerts": alerts,
+                    "data_source": "database",
+                    "last_updated": datetime.now().isoformat()
+                }
                 
         except Exception as e:
             logger.error(f"❌ Failed to get alerts data from database: {e}")
@@ -391,14 +705,397 @@ class FixedDatabaseIntegration:
                         "item_id": row.item_id
                     })
                     logger.info(f"✅ Updated inventory for {item_id}: {row.current_stock} -> {new_quantity}")
+                    
+                    # For now, let's NOT auto-distribute to avoid transaction issues
+                    # Manual sync can be done separately
+                    
                 else:
                     # If item doesn't exist, we might need to create it or log a warning
                     logger.warning(f"⚠️ Item {item_id} not found in database for update")
-                    # Optionally, could create a new record here
                     
         except Exception as e:
             logger.error(f"❌ Failed to update inventory quantity: {e}")
             raise
+
+    async def sync_inventory_with_locations(self, item_id: str):
+        """Sync inventory_items.current_stock with sum of item_locations.quantity"""
+        try:
+            if not self.is_connected:
+                await self.initialize()
+            
+            async with self.engine.begin() as conn:
+                # Get sum of all location quantities
+                location_sum_query = text("""
+                    SELECT COALESCE(SUM(quantity), 0) as location_sum
+                    FROM item_locations 
+                    WHERE item_id = :item_id
+                """)
+                result = await conn.execute(location_sum_query, {"item_id": item_id})
+                row = result.fetchone()
+                location_sum = row.location_sum
+                
+                # Update inventory_items table to match location sum
+                update_query = text("""
+                    UPDATE inventory_items 
+                    SET current_stock = :location_sum
+                    WHERE item_id = :item_id
+                """)
+                await conn.execute(update_query, {
+                    "location_sum": location_sum,
+                    "item_id": item_id
+                })
+                
+                logger.info(f"✅ Synced {item_id} inventory: current_stock = {location_sum}")
+                return location_sum
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to sync inventory: {e}")
+            raise
+
+    async def smart_distribute_to_locations(self, item_id: str, quantity_to_distribute: int, reason: str):
+        """Smart distribution of stock to locations based on priorities and low stock"""
+        try:
+            async with self.engine.begin() as conn:
+                # Get item name for activity logging
+                item_query = text("SELECT name FROM inventory_items WHERE item_id = :item_id")
+                item_result = await conn.execute(item_query, {"item_id": item_id})
+                item_name = item_result.scalar() or f"Item {item_id}"
+                
+                # Define location priorities (lower number = higher priority)
+                location_priorities = {
+                    'ICU-01': 1,
+                    'ICU-02': 2,
+                    'ER-01': 3,
+                    'SURGERY-01': 4,
+                    'SURGERY-02': 5,
+                    'CARDIOLOGY': 6,
+                    'PHARMACY': 7,
+                    'LAB-01': 8,
+                    'LAB-02': 9,
+                    'GENERAL-01': 10,
+                    'GENERAL-02': 11,
+                    'STORAGE': 12
+                }
+                
+                # Get all locations for this item with their current stock
+                locations_query = text("""
+                    SELECT 
+                        il.location_id,
+                        COALESCE(l.name, il.location_id) as location_name,
+                        il.quantity as current_quantity,
+                        il.minimum_threshold,
+                        il.maximum_capacity
+                    FROM item_locations il
+                    LEFT JOIN locations l ON il.location_id = l.location_id
+                    WHERE il.item_id = :item_id
+                    ORDER BY il.location_id
+                """)
+                
+                locations_result = await conn.execute(locations_query, {"item_id": item_id})
+                locations = locations_result.fetchall()
+                
+                if not locations:
+                    logger.warning(f"⚠️ No locations found for item {item_id}")
+                    return
+                
+                # Convert to list of dictionaries for easier sorting
+                locations_list = []
+                for location in locations:
+                    current_qty = location.current_quantity
+                    min_threshold = location.minimum_threshold
+                    is_low_stock = current_qty <= min_threshold
+                    priority = location_priorities.get(location.location_id, 999)
+                    
+                    locations_list.append({
+                        'location_id': location.location_id,
+                        'location_name': location.location_name,
+                        'current_quantity': current_qty,
+                        'minimum_threshold': min_threshold,
+                        'maximum_capacity': location.maximum_capacity,
+                        'is_low_stock': is_low_stock,
+                        'priority': priority,
+                        'deficit': max(0, min_threshold - current_qty)
+                    })
+                
+                # Sort by:
+                # 1. Low stock first (is_low_stock = True first)
+                # 2. Then by priority (lower number = higher priority)
+                # 3. Then by deficit (higher deficit first for low stock items)
+                locations_list.sort(key=lambda x: (
+                    not x['is_low_stock'],  # False (low stock) comes before True (good stock)
+                    x['priority'],          # Lower priority number = higher priority
+                    -x['deficit']           # Higher deficit first (negative for descending)
+                ))
+                
+                remaining_quantity = quantity_to_distribute
+                distribution_log = []
+                
+                logger.info(f"🎯 Smart distribution for {item_id} - {quantity_to_distribute} units:")
+                
+                # Phase 1: Fill low stock locations to minimum threshold (in priority order)
+                for location in locations_list:
+                    if remaining_quantity <= 0:
+                        break
+                        
+                    if location['is_low_stock']:
+                        deficit = location['deficit']
+                        if deficit > 0:
+                            available_capacity = location['maximum_capacity'] - location['current_quantity']
+                            to_add = min(deficit, remaining_quantity, available_capacity)
+                            
+                            if to_add > 0:
+                                new_qty = location['current_quantity'] + to_add
+                                
+                                # Update location stock
+                                update_location_query = text("""
+                                    UPDATE item_locations 
+                                    SET quantity = :new_quantity, last_updated = CURRENT_TIMESTAMP
+                                    WHERE item_id = :item_id AND location_id = :location_id
+                                """)
+                                await conn.execute(update_location_query, {
+                                    "new_quantity": new_qty,
+                                    "item_id": item_id,
+                                    "location_id": location['location_id']
+                                })
+                                
+                                remaining_quantity -= to_add
+                                location['current_quantity'] = new_qty  # Update for phase 2
+                                distribution_log.append(f"📦 {location['location_name']} (Priority {location['priority']}): +{to_add} units ({location['current_quantity'] - to_add} → {new_qty}) [LOW STOCK FILL]")
+                                
+                                # Log activity for low stock fill
+                                await self.log_activity(
+                                    "smart_distribution_low_stock",
+                                    item_id,
+                                    item_name,
+                                    location['location_name'],
+                                    to_add,
+                                    f"Low stock replenishment (Priority {location['priority']})",
+                                    "Smart Distribution System"
+                                )
+                
+                # Phase 2: Distribute remaining stock by priority (regardless of low stock status)
+                if remaining_quantity > 0:
+                    # Re-sort by priority only for remaining distribution
+                    locations_list.sort(key=lambda x: x['priority'])
+                    
+                    # Calculate total available capacity across all locations
+                    total_available_capacity = sum(
+                        max(0, loc['maximum_capacity'] - loc['current_quantity']) 
+                        for loc in locations_list
+                    )
+                    
+                    if total_available_capacity > 0:
+                        for location in locations_list:
+                            if remaining_quantity <= 0:
+                                break
+                                
+                            available_capacity = location['maximum_capacity'] - location['current_quantity']
+                            if available_capacity > 0:
+                                # Distribute based on priority weight and available capacity
+                                # Higher priority locations get more stock
+                                priority_weight = max(1, 13 - location['priority'])  # Higher priority = higher weight
+                                
+                                # Calculate proportional allocation based on priority and capacity
+                                proportion = (priority_weight * available_capacity) / (sum(
+                                    max(1, 13 - loc['priority']) * max(0, loc['maximum_capacity'] - loc['current_quantity'])
+                                    for loc in locations_list
+                                    if loc['maximum_capacity'] - loc['current_quantity'] > 0
+                                ) or 1)
+                                
+                                to_add = min(
+                                    int(remaining_quantity * proportion) + (1 if location['priority'] <= 3 else 0),  # Bonus for high priority
+                                    available_capacity,
+                                    remaining_quantity
+                                )
+                                
+                                if to_add > 0:
+                                    new_qty = location['current_quantity'] + to_add
+                                    
+                                    # Update location stock
+                                    update_location_query = text("""
+                                        UPDATE item_locations 
+                                        SET quantity = :new_quantity, last_updated = CURRENT_TIMESTAMP
+                                        WHERE item_id = :item_id AND location_id = :location_id
+                                    """)
+                                    await conn.execute(update_location_query, {
+                                        "new_quantity": new_qty,
+                                        "item_id": item_id,
+                                        "location_id": location['location_id']
+                                    })
+                                    
+                                    remaining_quantity -= to_add
+                                    distribution_log.append(f"📦 {location['location_name']} (Priority {location['priority']}): +{to_add} units ({location['current_quantity']} → {new_qty}) [PRIORITY FILL]")
+                                    
+                                    # Log activity for priority fill
+                                    await self.log_activity(
+                                        "smart_distribution_priority",
+                                        item_id,
+                                        item_name,
+                                        location['location_name'],
+                                        to_add,
+                                        f"Priority-based distribution (Priority {location['priority']})",
+                                        "Smart Distribution System"
+                                    )
+                    
+                    # If there's still remaining stock, give it to the highest priority location with capacity
+                    if remaining_quantity > 0:
+                        for location in locations_list:
+                            available_capacity = location['maximum_capacity'] - location['current_quantity']
+                            if available_capacity > 0:
+                                to_add = min(remaining_quantity, available_capacity)
+                                if to_add > 0:
+                                    new_qty = location['current_quantity'] + to_add
+                                    
+                                    # Update location stock
+                                    update_location_query = text("""
+                                        UPDATE item_locations 
+                                        SET quantity = :new_quantity, last_updated = CURRENT_TIMESTAMP
+                                        WHERE item_id = :item_id AND location_id = :location_id
+                                    """)
+                                    await conn.execute(update_location_query, {
+                                        "new_quantity": new_qty,
+                                        "item_id": item_id,
+                                        "location_id": location['location_id']
+                                    })
+                                    
+                                    remaining_quantity -= to_add
+                                    distribution_log.append(f"📦 {location['location_name']} (Priority {location['priority']}): +{to_add} units ({location['current_quantity']} → {new_qty}) [OVERFLOW FILL]")
+                                    
+                                    # Log activity for overflow fill
+                                    await self.log_activity(
+                                        "smart_distribution_overflow",
+                                        item_id,
+                                        item_name,
+                                        location['location_name'],
+                                        to_add,
+                                        f"Overflow allocation (Priority {location['priority']})",
+                                        "Smart Distribution System"
+                                    )
+                                    break
+                
+                # Log the distribution
+                logger.info(f"✅ Smart distribution for {item_id} completed:")
+                for log_entry in distribution_log:
+                    logger.info(f"   {log_entry}")
+                
+                if remaining_quantity > 0:
+                    logger.warning(f"⚠️ {remaining_quantity} units could not be distributed (capacity limits)")
+                
+                # Log summary activity
+                total_distributed = quantity_to_distribute - remaining_quantity
+                if total_distributed > 0:
+                    await self.log_activity(
+                        "smart_distribution_summary",
+                        item_id,
+                        item_name,
+                        f"{len(distribution_log)} locations",
+                        total_distributed,
+                        f"Smart distribution completed ({len(distribution_log)} locations updated)",
+                        "Smart Distribution System"
+                    )
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to smart distribute stock: {e}")
+            raise
+    
+    async def log_activity(self, activity_type: str, item_id: str, item_name: str, 
+                          location: str, quantity: int, reason: str, user: str = "System"):
+        """Log activity for recent activity dashboard"""
+        try:
+            activity = {
+                "activity_id": f"smart-dist-{uuid.uuid4().hex[:8]}",
+                "action_type": activity_type,
+                "item_id": item_id,
+                "item_name": item_name,
+                "location": location,
+                "quantity": quantity,
+                "reason": reason,
+                "user": user,
+                "timestamp": datetime.now().isoformat(),
+                "status": "completed",
+                "priority": "medium"
+            }
+            
+            # Store in memory for recent activities (this could be enhanced with database storage)
+            if not hasattr(self, 'recent_activities'):
+                self.recent_activities = []
+            
+            self.recent_activities.insert(0, activity)  # Insert at beginning
+            
+            # Keep only last 50 activities
+            if len(self.recent_activities) > 50:
+                self.recent_activities = self.recent_activities[:50]
+            
+            logger.info(f"📝 Activity logged: {activity_type} for {item_name} ({quantity} units) - {reason}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to log activity: {e}")
+    
+    async def get_recent_activities(self, limit: int = 10):
+        """Get recent activities for dashboard"""
+        try:
+            if not hasattr(self, 'recent_activities'):
+                self.recent_activities = []
+            return self.recent_activities[:limit]
+        except Exception as e:
+            logger.error(f"❌ Failed to get recent activities: {e}")
+            return []
+    
+    async def check_and_fix_inventory_mismatches(self):
+        """Check for and fix inventory mismatches across all items"""
+        try:
+            mismatches = []
+            
+            async with self.engine.begin() as conn:
+                # Get all items with their total stock
+                items_query = text("""
+                    SELECT item_id, name, current_stock 
+                    FROM inventory_items 
+                    WHERE is_active = TRUE
+                """)
+                items_result = await conn.execute(items_query)
+                items = items_result.fetchall()
+                
+                for item in items:
+                    item_id = item[0]
+                    item_name = item[1]
+                    total_stock = item[2]
+                    
+                    # Get location sum for this item
+                    locations_query = text("""
+                        SELECT SUM(quantity) as location_sum
+                        FROM item_locations 
+                        WHERE item_id = :item_id
+                    """)
+                    locations_result = await conn.execute(locations_query, {"item_id": item_id})
+                    location_sum = locations_result.scalar() or 0
+                    
+                    # Check for mismatch
+                    if total_stock != location_sum:
+                        mismatch = total_stock - location_sum
+                        mismatches.append({
+                            "item_id": item_id,
+                            "item_name": item_name,
+                            "total_stock": total_stock,
+                            "location_sum": location_sum,
+                            "mismatch": mismatch
+                        })
+                        
+                        logger.warning(f"⚠️ Mismatch found for {item_name} ({item_id}): Total={total_stock}, Location Sum={location_sum}, Mismatch={mismatch}")
+                        
+                        # Auto-fix if mismatch is positive (excess in total stock)
+                        if mismatch > 0:
+                            logger.info(f"🔧 Auto-fixing mismatch for {item_name}: distributing {mismatch} units")
+                            await self.smart_distribute_to_locations(item_id, mismatch, "automatic_mismatch_fix")
+                        else:
+                            logger.warning(f"⚠️ Negative mismatch for {item_name}: {mismatch} units. Manual intervention required.")
+                
+                logger.info(f"✅ Inventory mismatch check completed: {len(mismatches)} mismatches found")
+                return mismatches
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to check inventory mismatches: {e}")
+            return []
     
     async def update_user_status(self, user_id: str, is_active: bool):
         """Update user status in the database"""
@@ -428,6 +1125,22 @@ class FixedDatabaseIntegration:
                 await self.initialize()
             
             async with self.engine.begin() as conn:
+                # Check if there's already an active alert for this item
+                check_query = text("""
+                    SELECT alert_id FROM alerts 
+                    WHERE item_id = :item_id AND alert_type = :alert_type AND is_resolved = FALSE
+                    LIMIT 1
+                """)
+                
+                existing_alert = await conn.execute(check_query, {
+                    "item_id": item.get("item_id"),
+                    "alert_type": alert_type
+                })
+                
+                if existing_alert.fetchone():
+                    logger.info(f"⚠️ Alert already exists for item {item.get('name', 'Unknown')} - skipping duplicate")
+                    return None
+                
                 # Create alert for low stock or other inventory issues
                 alert_id = f"ALERT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{item.get('item_id', 'UNK')}"
                 
@@ -446,6 +1159,7 @@ class FixedDatabaseIntegration:
                     message = f"{item.get('name', 'Unknown Item')} is below minimum stock ({current_stock} remaining, minimum: {minimum_stock})"
                 else:
                     level = "medium"
+                    message = f"{item.get('name', 'Unknown Item')} is approaching reorder point ({current_stock} remaining)"
                     message = f"{item.get('name', 'Unknown Item')} is approaching reorder point ({current_stock} remaining)"
                 
                 # Insert alert into database
@@ -470,25 +1184,134 @@ class FixedDatabaseIntegration:
         except Exception as e:
             logger.error(f"❌ Failed to create alert: {e}")
             return None
+    
+    async def auto_resolve_alerts_for_item(self, item_id, alert_type='low_stock'):
+        """Automatically resolve alerts for an item when the underlying issue is fixed"""
+        try:
+            if not self.is_connected:
+                await self.initialize()
+                
+            query = text("""
+                UPDATE alerts 
+                SET is_resolved = TRUE, resolved_at = NOW()
+                WHERE item_id = :item_id AND alert_type = :alert_type AND is_resolved = FALSE
+                RETURNING alert_id
+            """)
+            
+            async with self.engine.begin() as conn:
+                result = await conn.execute(query, {
+                    'item_id': item_id,
+                    'alert_type': alert_type
+                })
+                
+                resolved_alerts = result.fetchall()
+                logger.info(f"✅ Auto-resolved {len(resolved_alerts)} alerts for item {item_id}")
+                return [str(alert[0]) for alert in resolved_alerts]
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to auto-resolve alerts: {e}")
+            return []
+    
+    async def resolve_alert(self, alert_id):
+        """Manually resolve a specific alert by ID"""
+        try:
+            if not self.is_connected:
+                await self.initialize()
+                
+            query = text("""
+                UPDATE alerts 
+                SET is_resolved = TRUE, resolved_at = NOW()
+                WHERE alert_id = :alert_id
+                RETURNING alert_id, item_id, alert_type
+            """)
+            
+            async with self.engine.begin() as conn:
+                result = await conn.execute(query, {'alert_id': alert_id})
+                resolved_alert = result.fetchone()
+                
+                if resolved_alert:
+                    logger.info(f"✅ Resolved alert {alert_id} for item {resolved_alert[1]}")
+                    return {
+                        'alert_id': str(resolved_alert[0]),
+                        'item_id': resolved_alert[1],
+                        'alert_type': resolved_alert[2],
+                        'resolved_at': datetime.now().isoformat()
+                    }
+                else:
+                    logger.warning(f"⚠️ Alert {alert_id} not found or already resolved")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"❌ Failed to resolve alert {alert_id}: {e}")
+            return None
 
     async def analyze_and_create_alerts(self):
-        """Analyze inventory and create alerts for low stock items"""
+        """Analyze inventory and create alerts for low stock items, resolve alerts for resolved issues"""
         try:
+            logger.info("🔍 Starting alert analysis...")
             inventory_data = await self.get_inventory_data()
             items = inventory_data.get("items", [])
+            logger.info(f"📊 Analyzing {len(items)} inventory items...")
             
             alerts_created = 0
+            alerts_resolved = 0
+            
+            def safe_convert_to_int(value, field_name="unknown"):
+                """Safely convert value to integer, handling lists and other types"""
+                try:
+                    if isinstance(value, list):
+                        logger.warning(f"⚠️ {field_name} is a list: {value}, using first value")
+                        if value and len(value) > 0:
+                            return int(float(str(value[0])))
+                        return 0
+                    elif isinstance(value, (int, float)):
+                        return int(value)
+                    elif isinstance(value, str):
+                        try:
+                            return int(float(value))
+                        except ValueError:
+                            logger.warning(f"⚠️ Cannot convert {field_name} string '{value}' to int, using 0")
+                            return 0
+                    elif value is None:
+                        return 0
+                    else:
+                        logger.warning(f"⚠️ {field_name} has unexpected type {type(value)}: {value}, using 0")
+                        return 0
+                except Exception as e:
+                    logger.warning(f"⚠️ Error converting {field_name} '{value}' to int: {e}, using 0")
+                    return 0
+            
             for item in items:
-                current_stock = item.get("current_stock", 0)
-                minimum_stock = item.get("minimum_stock", 0)
+                # Safely extract stock values with comprehensive type checking
+                current_stock_raw = item.get("current_stock", 0)
+                minimum_stock_raw = item.get("minimum_stock", 0)
                 
-                # Create alert if stock is low
+                current_stock = safe_convert_to_int(current_stock_raw, "current_stock")
+                minimum_stock = safe_convert_to_int(minimum_stock_raw, "minimum_stock")
+                
+                item_name = item.get("name", "Unknown")
+                item_id = item.get("item_id")
+                
+                logger.debug(f"📦 Checking {item_name}: current={current_stock}, minimum={minimum_stock}")
+                
+                # Check if stock is low
                 if current_stock <= minimum_stock:
+                    logger.info(f"🚨 Low stock detected for {item_name}: {current_stock} <= {minimum_stock}")
                     alert_id = await self.create_alert_from_inventory(item)
                     if alert_id:
                         alerts_created += 1
+                        logger.info(f"✅ Alert created: {alert_id}")
+                    else:
+                        logger.info(f"ℹ️ Alert already exists for {item_name} (skipping duplicate)")
+                else:
+                    # Stock is sufficient - resolve any existing low stock alerts
+                    logger.debug(f"✅ {item_name} stock is sufficient: {current_stock} > {minimum_stock}")
+                    resolved = await self.auto_resolve_alerts_for_item(item_id, 'low_stock')
+                    if resolved > 0:
+                        alerts_resolved += resolved
+                        logger.info(f"✅ Auto-resolved {resolved} alerts for {item_name} (stock replenished)")
             
-            logger.info(f"📊 Created {alerts_created} alerts from inventory analysis")
+            logger.info(f"📊 Alert analysis completed: {alerts_created} alerts created, {alerts_resolved} alerts resolved from {len(items)} items")
             return alerts_created
             
         except Exception as e:
@@ -526,9 +1349,57 @@ class FixedDatabaseIntegration:
                 locations = locations_result.fetchall()
                 
                 # Calculate automation strategy
-                total_stock = item_data[2]
-                minimum_stock = item_data[3]
-                reorder_point = item_data[4]
+                def safe_convert_to_int(value, field_name="unknown"):
+                    """Safely convert value to integer, handling lists and other types"""
+                    try:
+                        if isinstance(value, list):
+                            if value and len(value) > 0:
+                                return int(float(str(value[0])))
+                            return 0
+                        elif isinstance(value, (int, float)):
+                            return int(value)
+                        elif isinstance(value, str):
+                            try:
+                                return int(float(value))
+                            except ValueError:
+                                return 0
+                        elif value is None:
+                            return 0
+                        else:
+                            return 0
+                    except Exception:
+                        return 0
+                
+                def safe_convert_to_float(value, field_name="unknown"):
+                    """Safely convert value to float, handling lists and other types"""
+                    try:
+                        if isinstance(value, list):
+                            if value and len(value) > 0:
+                                return float(str(value[0]))
+                            return 0.0
+                        elif isinstance(value, (int, float)):
+                            return float(value)
+                        elif isinstance(value, str):
+                            try:
+                                return float(value)
+                            except ValueError:
+                                return 0.0
+                        elif value is None:
+                            return 0.0
+                        else:
+                            return 0.0
+                    except Exception:
+                        return 0.0
+                
+                # Safely extract and convert values
+                item_id_val = str(item_data[0]) if item_data[0] is not None else ""
+                item_name = str(item_data[1]) if item_data[1] is not None else "Unknown"
+                total_stock = safe_convert_to_int(item_data[2], "total_stock")
+                minimum_stock = safe_convert_to_int(item_data[3], "minimum_stock")
+                reorder_point = safe_convert_to_int(item_data[4], "reorder_point")
+                unit_cost = safe_convert_to_float(item_data[5], "unit_cost")
+                
+                logger.debug(f"📊 Item analysis: {item_name} - Stock: {total_stock}, Min: {minimum_stock}, Reorder: {reorder_point}")
                 
                 # Calculate transfer availability
                 total_available_for_transfer = 0

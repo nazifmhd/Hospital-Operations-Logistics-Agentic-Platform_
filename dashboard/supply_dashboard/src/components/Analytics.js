@@ -4,10 +4,12 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { TrendingUp, Package, DollarSign, Calendar } from 'lucide-react';
 
 const Analytics = () => {
-  const { dashboardData, getUsageAnalytics, loading } = useSupplyData();
+  const { dashboardData, getUsageAnalytics, getProcurementRecommendations, loading } = useSupplyData();
   const [selectedItem, setSelectedItem] = useState(null);
   const [usageData, setUsageData] = useState(null);
   const [usageLoading, setUsageLoading] = useState(false);
+  const [procurementRecommendations, setProcurementRecommendations] = useState([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
 
   useEffect(() => {
     if (selectedItem) {
@@ -19,6 +21,24 @@ const Analytics = () => {
       setUsageLoading(false); // Clear loading state
     }
   }, [selectedItem]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch procurement recommendations on component mount
+  useEffect(() => {
+    fetchProcurementRecommendations();
+  }, []);
+
+  const fetchProcurementRecommendations = async () => {
+    try {
+      setInsightsLoading(true);
+      const recommendations = await getProcurementRecommendations();
+      setProcurementRecommendations(recommendations.recommendations || []);
+    } catch (error) {
+      console.error('Failed to fetch procurement recommendations:', error);
+      setProcurementRecommendations([]);
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
 
   const fetchUsageData = async (itemId) => {
     try {
@@ -260,36 +280,100 @@ const Analytics = () => {
         </div>
 
         {usageData && !usageLoading ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <h4 className="text-md font-medium text-gray-700 mb-3">Daily Usage Pattern</h4>
-              <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={usageData.usage_history}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="usage" stroke="#3B82F6" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <h4 className="text-md font-medium text-gray-700 mb-3">Daily Usage Pattern</h4>
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={usageData.usage_history}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="usage" stroke="#3B82F6" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h5 className="text-sm font-medium text-gray-700">Average Daily Usage</h5>
+                  <p className="text-2xl font-bold text-blue-600">{usageData.summary?.average_daily_usage || usageData.average_daily_usage}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h5 className="text-sm font-medium text-gray-700">Total Usage (30 days)</h5>
+                  <p className="text-2xl font-bold text-green-600">{usageData.summary?.total_usage || usageData.total_usage_last_30_days}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h5 className="text-sm font-medium text-gray-700">Projected Depletion</h5>
+                  <p className="text-sm text-gray-600">
+                    {Math.round((inventory.find(item => item.item_id === selectedItem)?.current_stock || 0) / ((usageData.summary?.average_daily_usage || usageData.average_daily_usage) || 1))} days
+                  </p>
+                </div>
+                {usageData.summary?.trend && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h5 className="text-sm font-medium text-gray-700">Usage Trend</h5>
+                    <p className={`text-sm font-medium ${
+                      usageData.summary.trend === 'increasing' ? 'text-red-600' : 
+                      usageData.summary.trend === 'decreasing' ? 'text-green-600' : 'text-gray-600'
+                    }`}>
+                      {(usageData.summary.trend || '').charAt(0).toUpperCase() + (usageData.summary.trend || '').slice(1)}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
             
-            <div className="space-y-4">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h5 className="text-sm font-medium text-gray-700">Average Daily Usage</h5>
-                <p className="text-2xl font-bold text-blue-600">{usageData.average_daily_usage}</p>
+            {/* Usage Patterns and Forecasting */}
+            {usageData.patterns && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h5 className="text-md font-medium text-gray-700 mb-3">Weekly Usage Patterns</h5>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Peak Usage Day:</span>
+                      <span className="font-medium text-blue-600">{usageData.patterns.peak_day}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Lowest Usage Day:</span>
+                      <span className="font-medium text-green-600">{usageData.patterns.low_day}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Weekday Average:</span>
+                      <span className="font-medium">{usageData.patterns.weekday_vs_weekend?.weekday_avg}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Weekend Average:</span>
+                      <span className="font-medium">{usageData.patterns.weekday_vs_weekend?.weekend_avg}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {usageData.forecasting && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h5 className="text-md font-medium text-gray-700 mb-3">7-Day Forecast</h5>
+                    <div className="space-y-2">
+                      {usageData.forecasting.next_7_days_estimated?.slice(0, 3).map((forecast, index) => (
+                        <div key={index} className="flex justify-between text-sm">
+                          <span>{forecast.date}</span>
+                          <span className="font-medium">{forecast.estimated_usage} units</span>
+                        </div>
+                      ))}
+                      <div className="pt-2 border-t border-gray-200">
+                        <div className="flex justify-between text-sm">
+                          <span>Confidence Level:</span>
+                          <span className="font-medium text-blue-600">{(usageData.forecasting.confidence * 100).toFixed(0)}%</span>
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>Method:</span>
+                          <span>{usageData.forecasting.method}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h5 className="text-sm font-medium text-gray-700">Total Usage (30 days)</h5>
-                <p className="text-2xl font-bold text-green-600">{usageData.total_usage_last_30_days}</p>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h5 className="text-sm font-medium text-gray-700">Projected Depletion</h5>
-                <p className="text-sm text-gray-600">
-                  {Math.round((inventory.find(item => item.item_id === selectedItem)?.current_stock || 0) / (usageData.average_daily_usage || 1))} days
-                </p>
-              </div>
-            </div>
+            )}
           </div>
         ) : selectedItem && usageLoading ? (
           <div className="text-center py-8">
@@ -330,29 +414,50 @@ const Analytics = () => {
                 <span className="w-2 h-2 bg-green-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
                 Total inventory value: ${inventory.reduce((sum, item) => sum + (item.total_value || 0), 0).toLocaleString()}
               </li>
+              {/* Dynamic insights from usage analytics */}
+              {usageData && usageData.insights && usageData.insights.map((insight, index) => (
+                <li key={`insight-${index}`} className="flex items-start">
+                  <span className="w-2 h-2 bg-indigo-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                  {insight}
+                </li>
+              ))}
             </ul>
           </div>
           
           <div>
             <h4 className="text-md font-medium text-gray-700 mb-3">Recommendations</h4>
-            <ul className="space-y-2 text-sm text-gray-600">
-              <li className="flex items-start">
-                <span className="w-2 h-2 bg-orange-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                Review procurement for {inventory.filter(item => isLowStock(item)).length} low-stock items
-              </li>
-              <li className="flex items-start">
-                <span className="w-2 h-2 bg-purple-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                Implement automated reordering for high-usage items
-              </li>
-              <li className="flex items-start">
-                <span className="w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                Consider bulk purchasing for {categoryChartData.sort((a, b) => b.count - a.count)[0]?.category} category
-              </li>
-              <li className="flex items-start">
-                <span className="w-2 h-2 bg-teal-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                Set up expiry alerts for better waste management
-              </li>
-            </ul>
+            {insightsLoading ? (
+              <div className="text-center py-4">
+                <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <p className="mt-2 text-xs text-gray-500">Loading recommendations...</p>
+              </div>
+            ) : (
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li className="flex items-start">
+                  <span className="w-2 h-2 bg-orange-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                  Review procurement for {inventory.filter(item => isLowStock(item)).length} low-stock items
+                </li>
+                <li className="flex items-start">
+                  <span className="w-2 h-2 bg-purple-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                  Implement automated reordering for high-usage items
+                </li>
+                <li className="flex items-start">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                  Consider bulk purchasing for {categoryChartData.sort((a, b) => b.count - a.count)[0]?.category} category
+                </li>
+                <li className="flex items-start">
+                  <span className="w-2 h-2 bg-teal-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                  Set up expiry alerts for better waste management
+                </li>
+                {/* Dynamic recommendations from procurement API */}
+                {procurementRecommendations.slice(0, 3).map((rec, index) => (
+                  <li key={`rec-${index}`} className="flex items-start">
+                    <span className="w-2 h-2 bg-emerald-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                    {rec.description || `${rec.action}: ${rec.item_name} (${rec.suggested_quantity} units)`}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </div>
