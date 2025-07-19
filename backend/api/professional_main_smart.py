@@ -89,6 +89,30 @@ except ImportError as e:
     ENHANCED_AGENT_AVAILABLE = False
     logging.warning(f"⚠️ Enhanced Supply Agent not available: {e}")
 
+# LLM Integration for Intelligent Supply Management
+LLM_INTEGRATION_AVAILABLE = False
+llm_service = None
+try:
+    # Import LLM integration modules
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'ai_ml'))
+    from llm_integration import (
+        IntelligentSupplyAssistant, 
+        LLMEnhancedSupplyAgent,
+        LLMIntegrationService,
+        LLMResponse
+    )
+    
+    # Initialize LLM services
+    llm_service = LLMIntegrationService()
+    LLM_INTEGRATION_AVAILABLE = True
+    logging.info("✅ LLM Integration modules available and initialized")
+except ImportError as e:
+    LLM_INTEGRATION_AVAILABLE = False
+    logging.warning(f"⚠️ LLM Integration not available: {e}")
+except Exception as e:
+    LLM_INTEGRATION_AVAILABLE = False
+    logging.error(f"❌ LLM Integration initialization failed: {e}")
+
 # Initialize the professional agent (primary system)
 professional_agent = ProfessionalSupplyInventoryAgent()
 
@@ -4756,6 +4780,306 @@ async def update_user_status(user_id: str, status_request: dict):
         
     except Exception as e:
         logging.error(f"Error updating user status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== LLM INTELLIGENCE ENDPOINTS ====================
+
+# Pydantic models for LLM API requests
+class LLMQueryRequest(BaseModel):
+    query: str = Field(..., description="Natural language query from user")
+    context: Optional[Dict] = Field(default={}, description="System context for the query")
+    user_role: Optional[str] = Field(default="supply_manager", description="Role of the user making the query")
+
+class LLMAnalysisRequest(BaseModel):
+    data: Dict = Field(..., description="Data to analyze")
+    analysis_type: str = Field(..., description="Type of analysis requested")
+    context: Optional[Dict] = Field(default={}, description="Additional context")
+
+@app.post("/api/v2/llm/query")
+async def process_natural_language_query(request: LLMQueryRequest):
+    """
+    Process natural language queries about the supply system
+    Enables conversational interaction with inventory data
+    """
+    if not LLM_INTEGRATION_AVAILABLE:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "response": "I apologize, but the AI assistant is currently unavailable. Please try basic system queries or contact support.",
+                "confidence": 0.0,
+                "suggested_actions": ["Use standard dashboard filters", "Check system status", "Contact support"],
+                "requires_followup": True,
+                "error": "LLM service not available"
+            }
+        )
+    
+    try:
+        # Get current system context
+        system_context = {
+            **request.context,
+            "timestamp": datetime.now().isoformat(),
+            "user_role": request.user_role,
+            "system_status": "operational"
+        }
+        
+        # Add detailed inventory context 
+        if "inventory" not in system_context:
+            try:
+                inventory_data = await get_smart_dashboard_data()
+                
+                # Get low stock items with details
+                low_stock_items = [
+                    {
+                        "name": item.get("name"),
+                        "current_stock": item.get("current_stock", 0),
+                        "minimum_stock": item.get("minimum_stock", 0),
+                        "location": item.get("location"),
+                        "category": item.get("category"),
+                        "status": "low_stock"
+                    }
+                    for item in inventory_data.get("inventory", [])
+                    if item.get("current_stock", 0) <= item.get("minimum_stock", 0)
+                ]
+                
+                # Get critical alerts with details
+                critical_alerts = [
+                    {
+                        "message": alert.get("message"),
+                        "level": alert.get("level"),
+                        "department": alert.get("department"),
+                        "timestamp": alert.get("timestamp"),
+                        "item": alert.get("item", ""),
+                        "current_stock": alert.get("current_stock"),
+                        "required_stock": alert.get("required_stock")
+                    }
+                    for alert in inventory_data.get("alerts", [])
+                    if alert.get("level") == "critical"
+                ]
+                
+                # Get all inventory items for context
+                all_items = [
+                    {
+                        "name": item.get("name"),
+                        "current_stock": item.get("current_stock", 0),
+                        "minimum_stock": item.get("minimum_stock", 0),
+                        "location": item.get("location"),
+                        "category": item.get("category"),
+                        "supplier": item.get("supplier"),
+                        "last_updated": item.get("last_updated")
+                    }
+                    for item in inventory_data.get("inventory", [])
+                ]
+                
+                system_context["inventory_data"] = {
+                    "total_items": len(all_items),
+                    "low_stock_items": low_stock_items,
+                    "low_stock_count": len(low_stock_items),
+                    "critical_alerts": critical_alerts,
+                    "critical_alerts_count": len(critical_alerts),
+                    "all_items": all_items[:20],  # Limit to first 20 for context
+                    "last_updated": datetime.now().isoformat()
+                }
+                
+                # Also include recent activities for context
+                try:
+                    recent_activities = await get_recent_activities()
+                    system_context["recent_activities"] = recent_activities.get("activities", [])[:10]
+                except Exception as e:
+                    logging.warning(f"Could not add activities context: {e}")
+                    
+            except Exception as e:
+                logging.warning(f"Could not add inventory context: {e}")
+        
+        # Process query with LLM
+        response = await llm_service.process_natural_language_command(
+            request.query, 
+            system_context
+        )
+        
+        return JSONResponse(content={
+            "response": response["response"],
+            "confidence": response["confidence"],
+            "suggested_actions": response["suggested_actions"],
+            "requires_followup": response["requires_followup"],
+            "processed_at": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"LLM query processing error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "response": "I encountered an error processing your request. Please try again or contact support.",
+                "confidence": 0.0,
+                "suggested_actions": ["Try rephrasing your question", "Use standard dashboard features", "Contact support"],
+                "requires_followup": True,
+                "error": str(e)
+            }
+        )
+
+@app.post("/api/v2/llm/analyze-purchase-order")
+async def analyze_purchase_order_with_llm(request: LLMAnalysisRequest):
+    """
+    Generate intelligent analysis and justification for purchase orders
+    """
+    if not LLM_INTEGRATION_AVAILABLE:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "LLM analysis service not available"}
+        )
+    
+    try:
+        po_data = request.data
+        historical_context = request.context
+        
+        # Get LLM analysis
+        response = await llm_service.assistant.generate_purchase_order_justification(
+            po_data, historical_context
+        )
+        
+        return JSONResponse(content={
+            "justification": response.content,
+            "confidence": response.confidence,
+            "reasoning": response.reasoning,
+            "recommendations": response.suggestions,
+            "analysis_type": "purchase_order_justification",
+            "generated_at": response.generated_at.isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"LLM PO analysis error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v2/llm/enhance-dashboard")
+async def enhance_dashboard_with_llm():
+    """
+    Add LLM-generated insights to dashboard data
+    """
+    if not LLM_INTEGRATION_AVAILABLE:
+        return JSONResponse(content={"enhanced_data": await get_smart_dashboard_data()})
+    
+    try:
+        # Get base dashboard data
+        dashboard_data = await get_smart_dashboard_data()
+        
+        # Enhance with LLM insights
+        enhanced_data = await llm_service.enhance_dashboard_insights(dashboard_data)
+        
+        return JSONResponse(content={"enhanced_data": enhanced_data})
+        
+    except Exception as e:
+        logging.error(f"Dashboard enhancement error: {e}")
+        # Return base data if enhancement fails
+        return JSONResponse(content={"enhanced_data": await get_smart_dashboard_data()})
+
+@app.post("/api/v2/llm/generate-alert-narrative")
+async def generate_intelligent_alert(request: LLMAnalysisRequest):
+    """
+    Generate contextual, intelligent alert messages
+    """
+    if not LLM_INTEGRATION_AVAILABLE:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Intelligent alert generation not available"}
+        )
+    
+    try:
+        alert_data = request.data
+        department_context = request.context
+        
+        # Generate intelligent alert
+        response = await llm_service.assistant.create_intelligent_alert(
+            alert_data, department_context
+        )
+        
+        return JSONResponse(content={
+            "enhanced_message": response.content,
+            "confidence": response.confidence,
+            "suggestions": response.suggestions,
+            "generated_at": response.generated_at.isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Alert generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v2/llm/status")
+async def get_llm_status():
+    """
+    Get status of LLM integration services with detailed metrics
+    """
+    if not LLM_INTEGRATION_AVAILABLE:
+        return JSONResponse(content={
+            "llm_available": False,
+            "service_status": "unavailable",
+            "error": "LLM integration not available",
+            "capabilities": [],
+            "timestamp": datetime.now().isoformat()
+        })
+    
+    try:
+        # Get detailed status from integration service
+        status = llm_service.get_system_status()
+        
+        return JSONResponse(content={
+            "llm_available": LLM_INTEGRATION_AVAILABLE,
+            "service_status": "operational" if status['gemini_configured'] else "limited",
+            "gemini_configured": status['gemini_configured'],
+            "api_key_set": status['gemini_api_key_set'],
+            "model": status['model'],
+            "capabilities": [
+                "natural_language_queries",
+                "purchase_order_analysis", 
+                "intelligent_alerts",
+                "dashboard_insights",
+                "contextual_explanations"
+            ] if LLM_INTEGRATION_AVAILABLE else [],
+            "performance_metrics": status['performance_metrics'],
+            "cache_enabled": status['cache_enabled'],
+            "system_health": status['system_health'],
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting LLM status: {e}")
+        return JSONResponse(content={
+            "llm_available": False,
+            "service_status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        })
+
+@app.post("/api/v2/llm/feedback")
+async def submit_llm_feedback(request: dict):
+    """
+    Submit user feedback for LLM responses to improve quality
+    """
+    if not LLM_INTEGRATION_AVAILABLE:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "LLM service not available"}
+        )
+    
+    try:
+        interaction_id = request.get('interaction_id')
+        feedback_score = request.get('feedback_score')  # 1-5 scale
+        feedback_text = request.get('feedback_text', '')
+        
+        # Log feedback for performance monitoring
+        logging.info(f"LLM Feedback - ID: {interaction_id}, Score: {feedback_score}, Text: {feedback_text}")
+        
+        # Here you could store feedback in database for analysis
+        # or send to analytics service
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": "Feedback submitted successfully",
+            "interaction_id": interaction_id,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error submitting LLM feedback: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== END POST ENDPOINTS ====================

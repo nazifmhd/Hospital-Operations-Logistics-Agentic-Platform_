@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSupplyData } from '../context/SupplyDataContext';
+import LLMChatInterface from './LLMChatInterface';
 import { 
   Package, 
   AlertTriangle, 
@@ -12,7 +13,8 @@ import {
   BarChart3,
   Shield,
   X,
-  Filter
+  Filter,
+  Bot
 } from 'lucide-react';
 
 const ProfessionalDashboard = () => {
@@ -23,6 +25,8 @@ const ProfessionalDashboard = () => {
   const [activityFilter, setActivityFilter] = useState('all');
   const [recentActivities, setRecentActivities] = useState([]);
   const [allActivities, setAllActivities] = useState([]);
+  const [showLLMChat, setShowLLMChat] = useState(false);
+  const [llmAvailable, setLlmAvailable] = useState(false);
 
   // Fetch real-time activities from database only
   const fetchRecentActivities = useCallback(async () => {
@@ -79,8 +83,23 @@ const ProfessionalDashboard = () => {
     }
   }, []);
 
+  // Check LLM availability
+  const checkLLMAvailability = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/v2/llm/status');
+      if (response.ok) {
+        const data = await response.json();
+        setLlmAvailable(data.llm_available);
+      }
+    } catch (error) {
+      console.warn('LLM service not available:', error);
+      setLlmAvailable(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchRecentActivities();
+    checkLLMAvailability();
     // Refresh activities every 60 seconds
     const interval = setInterval(fetchRecentActivities, 60000);
     return () => clearInterval(interval);
@@ -239,6 +258,18 @@ const ProfessionalDashboard = () => {
             </p>
           </div>
           <div className="flex items-center space-x-4">
+            {/* AI Assistant Button */}
+            {llmAvailable && (
+              <button
+                onClick={() => setShowLLMChat(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                <Bot className="w-5 h-5" />
+                <span className="font-medium">AI Assistant</span>
+                <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Beta</span>
+              </button>
+            )}
+            
             <div className="text-right">
               <p className="text-sm text-gray-500">Last updated</p>
               <p className="font-medium">{new Date().toLocaleTimeString()}</p>
@@ -574,6 +605,20 @@ const ProfessionalDashboard = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* LLM Chat Interface */}
+      {llmAvailable && (
+        <LLMChatInterface
+          isOpen={showLLMChat}
+          onClose={() => setShowLLMChat(false)}
+          systemContext={{
+            dashboard_data: dashboardData,
+            user_role: 'supply_manager',
+            current_page: 'professional_dashboard',
+            timestamp: new Date().toISOString()
+          }}
+        />
       )}
     </div>
   );

@@ -8,12 +8,20 @@ scipy>=1.7.0
 # Machine Learning
 scikit-learn>=1.0.0
 
+# LLM Integration - Gemini API
+google-generativeai>=0.3.0
+python-dotenv>=1.0.0
+
 # Data visualization (optional but useful)
 matplotlib>=3.4.0
 seaborn>=0.11.0
 
 # Additional utilities
 typing-extensions>=4.0.0
+
+# Performance monitoring and caching
+redis>=4.5.0  # Optional: for distributed caching
+aiofiles>=23.0.0  # For async file operations
 
 # Note: For production deployment, consider adding:
 # tensorflow>=2.8.0  # For deep learning models

@@ -14,6 +14,7 @@ import DepartmentInventory from './components/DepartmentInventory';
 import Settings from './components/Settings';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
+import FloatingAIAssistant from './components/FloatingAIAssistant';
 import { SupplyDataProvider } from './context/SupplyDataContext';
 
 function App() {
@@ -50,6 +51,9 @@ function App() {
               </Routes>
             </main>
           </div>
+          
+          {/* Global Floating AI Assistant */}
+          <FloatingAIAssistant />
         </div>
       </Router>
     </SupplyDataProvider>
