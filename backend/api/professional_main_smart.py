@@ -603,6 +603,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include RAG and MCP router
+try:
+    # Use the enhanced router with proper error handling
+    from enhanced_rag_mcp_router import router as rag_mcp_router
+    app.include_router(rag_mcp_router, prefix="/api/v2/rag-mcp", tags=["RAG & MCP"])
+    logging.info("✅ Enhanced RAG/MCP router integrated successfully on /api/v2/rag-mcp")
+        
+except ImportError as e:
+    logging.warning(f"⚠️ Enhanced RAG/MCP router not available: {e}")
+    # Fallback to simple router
+    try:
+        from simple_rag_router import router as rag_mcp_router
+        app.include_router(rag_mcp_router, prefix="/api/v2/rag-mcp", tags=["RAG & MCP"])
+        logging.info("✅ Simple RAG/MCP router integrated as fallback on /api/v2/rag-mcp")
+    except ImportError as e2:
+        logging.error(f"❌ No RAG/MCP router available: {e2}")
+except Exception as e:
+    logging.error(f"❌ Failed to integrate RAG/MCP router: {e}")
+    import traceback
+    logging.error(f"Full traceback: {traceback.format_exc()}")
+
 # WebSocket connection management
 websocket_connections: List[WebSocket] = []
 

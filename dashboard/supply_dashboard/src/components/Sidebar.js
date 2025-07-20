@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { X, BarChart3, Package, AlertTriangle, Home, Settings, Users, Archive, Brain, GitBranch, ArrowLeftRight, Building2 } from 'lucide-react';
+import { X, BarChart3, Package, AlertTriangle, Home, Settings, Users, Archive, Brain, GitBranch, ArrowLeftRight, Building2, Database } from 'lucide-react';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
@@ -14,6 +14,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     { name: 'Batch Management', href: '/batch-management', icon: Archive },
     { name: 'User Management', href: '/user-management', icon: Users },
     { name: 'AI/ML Analytics', href: '/ai-ml', icon: Brain },
+    { name: 'RAG & MCP Intelligence', href: '/rag-mcp', icon: Database },
     { name: 'Autonomous Workflow', href: '/workflow', icon: GitBranch },
     { name: 'Alerts', href: '/alerts', icon: AlertTriangle },
     { name: 'Analytics', href: '/analytics', icon: BarChart3 },

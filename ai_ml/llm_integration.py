@@ -35,6 +35,16 @@ else:
     GEMINI_CONFIGURED = False
     logging.warning("⚠️ Gemini API key not configured")
 
+# Import RAG and MCP systems
+try:
+    from rag_system import get_rag_system, enhance_with_rag, RAGContext
+    from mcp_server import get_mcp_server, handle_mcp_request, MCPContext
+    RAG_MCP_AVAILABLE = True
+    logging.info("✅ RAG and MCP systems available")
+except ImportError as e:
+    RAG_MCP_AVAILABLE = False
+    logging.warning(f"⚠️ RAG/MCP systems not available: {e}")
+
 # Simple in-memory cache to reduce API calls
 class LLMCache:
     """Simple cache to reduce repeated API calls"""
@@ -900,6 +910,181 @@ class LLMEnhancedSupplyAgent:
             return "LOW"
 
 # Enhanced integration service with monitoring
+class LLMEnhancedSupplyAgent:
+    """
+    Enhanced Supply Agent with RAG and MCP capabilities
+    Combines LLM intelligence with contextual retrieval and structured protocol
+    """
+    
+    def __init__(self):
+        self.llm_assistant = IntelligentSupplyAssistant()
+        self.rag_system = None
+        self.mcp_server = None
+        self.conversation_context = {}
+        
+    async def initialize(self):
+        """Initialize RAG and MCP systems"""
+        if RAG_MCP_AVAILABLE:
+            try:
+                self.rag_system = await get_rag_system()
+                self.mcp_server = get_mcp_server()
+                logging.info("✅ Enhanced Supply Agent with RAG/MCP initialized")
+            except Exception as e:
+                logging.error(f"❌ Failed to initialize RAG/MCP: {e}")
+                self.rag_system = None
+                self.mcp_server = None
+        else:
+            logging.warning("⚠️ RAG/MCP not available - using basic LLM only")
+    
+    async def process_query_with_context(self, query: str, user_context: Dict[str, Any] = None) -> LLMResponse:
+        """Process query with RAG context and MCP capabilities"""
+        try:
+            enhanced_prompt = query
+            context_info = ""
+            
+            # Get RAG context if available
+            if self.rag_system:
+                rag_context = await self.rag_system.get_context(query)
+                if rag_context.relevant_documents:
+                    context_info += f"\n\nRelevant Context from Knowledge Base:\n{rag_context.context_summary}"
+                    enhanced_prompt = f"{query}\n\nAdditional Context:\n{rag_context.context_summary}"
+            
+            # Get MCP context if available
+            if self.mcp_server and user_context:
+                mcp_context_response = await self.mcp_server._handle_get_context({}, user_context.get('connection_id', 'default'))
+                mcp_context = mcp_context_response.get('context', {})
+                
+                if mcp_context:
+                    hospital_info = mcp_context.get('hospital_info', {})
+                    inventory_state = mcp_context.get('inventory_state', {})
+                    
+                    context_info += f"\n\nCurrent Hospital State:\n"
+                    context_info += f"- Patient Census: {hospital_info.get('patient_census', 'N/A')}\n"
+                    context_info += f"- Bed Utilization: {hospital_info.get('bed_utilization', 'N/A')}\n"
+                    context_info += f"- Operating Status: {hospital_info.get('operating_status', 'Normal')}\n"
+                    context_info += f"- Total Inventory Value: ${inventory_state.get('total_value', 0):,.2f}\n"
+                    context_info += f"- Items Below Minimum: {inventory_state.get('items_below_minimum', 0)}\n"
+                    
+                    enhanced_prompt += context_info
+            
+            # Process with enhanced context
+            response = await self.llm_assistant.natural_language_query(enhanced_prompt, user_context or {})
+            
+            # Add context information to response
+            if context_info:
+                response.reasoning += f"\n\nContext Used: {context_info[:200]}..."
+            
+            return response
+            
+        except Exception as e:
+            logging.error(f"Enhanced query processing failed: {e}")
+            # Fallback to basic LLM processing
+            return await self.llm_assistant.natural_language_query(query, user_context or {})
+    
+    async def process_mcp_tool_request(self, tool_name: str, tool_params: Dict[str, Any], 
+                                     user_context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Process MCP tool request"""
+        if not self.mcp_server:
+            return {"error": "MCP server not available"}
+        
+        try:
+            connection_id = user_context.get('connection_id', 'default') if user_context else 'default'
+            
+            message_data = {
+                "id": f"tool_request_{int(time.time())}",
+                "type": "request", 
+                "method": "call_tool",
+                "params": {
+                    "name": tool_name,
+                    "arguments": tool_params
+                }
+            }
+            
+            response = await handle_mcp_request(message_data, connection_id)
+            return response
+            
+        except Exception as e:
+            logging.error(f"MCP tool request failed: {e}")
+            return {"error": f"Tool request failed: {str(e)}"}
+    
+    async def add_dynamic_knowledge(self, content: str, doc_type: str, metadata: Dict[str, Any]):
+        """Add dynamic knowledge to RAG system"""
+        if self.rag_system:
+            try:
+                from rag_system import DocumentType
+                doc_type_enum = DocumentType(doc_type) if doc_type in [dt.value for dt in DocumentType] else DocumentType.INVENTORY_DATA
+                await self.rag_system.add_dynamic_context(content, doc_type_enum, metadata)
+                logging.info(f"📝 Added dynamic knowledge: {doc_type}")
+            except Exception as e:
+                logging.error(f"Failed to add dynamic knowledge: {e}")
+    
+    async def get_intelligent_recommendations(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Get intelligent recommendations based on current context"""
+        try:
+            # Build comprehensive context prompt
+            prompt = f"""
+            Based on the current hospital supply chain state, provide intelligent recommendations:
+            
+            Current Context:
+            {json.dumps(context, indent=2)}
+            
+            Please analyze and provide:
+            1. Immediate actions needed (next 4 hours)
+            2. Short-term planning (next 24-48 hours) 
+            3. Medium-term optimization (next week)
+            4. Long-term strategic recommendations (next month)
+            5. Risk mitigation strategies
+            6. Cost optimization opportunities
+            
+            Focus on patient safety, operational efficiency, and cost-effectiveness.
+            """
+            
+            # Get RAG context for recommendations
+            rag_enhanced_response = await self.process_query_with_context(prompt, context)
+            
+            # Structure the response
+            recommendations = {
+                "immediate_actions": [],
+                "short_term_planning": [], 
+                "medium_term_optimization": [],
+                "long_term_strategic": [],
+                "risk_mitigation": [],
+                "cost_optimization": [],
+                "confidence_score": rag_enhanced_response.confidence,
+                "generated_at": rag_enhanced_response.generated_at.isoformat(),
+                "reasoning": rag_enhanced_response.reasoning
+            }
+            
+            # Parse structured recommendations from LLM response
+            content = rag_enhanced_response.content
+            
+            # Simple parsing - could be enhanced with more sophisticated NLP
+            sections = {
+                "immediate actions": "immediate_actions",
+                "short-term planning": "short_term_planning", 
+                "medium-term optimization": "medium_term_optimization",
+                "long-term strategic": "long_term_strategic",
+                "risk mitigation": "risk_mitigation",
+                "cost optimization": "cost_optimization"
+            }
+            
+            for section_name, key in sections.items():
+                pattern = rf"{section_name}[:\-]?\s*\n(.*?)(?=\n\d+\.|$)"
+                matches = re.findall(pattern, content, re.IGNORECASE | re.DOTALL)
+                if matches:
+                    items = [item.strip() for item in matches[0].split('\n') if item.strip() and not item.strip().startswith('-')]
+                    recommendations[key] = items[:5]  # Limit to top 5 items
+            
+            return recommendations
+            
+        except Exception as e:
+            logging.error(f"Failed to generate intelligent recommendations: {e}")
+            return {
+                "error": "Failed to generate recommendations",
+                "fallback_message": "Please check system status and try again",
+                "generated_at": datetime.now().isoformat()
+            }
+
 class LLMIntegrationService:
     """
     Service class for integrating LLM capabilities throughout the platform

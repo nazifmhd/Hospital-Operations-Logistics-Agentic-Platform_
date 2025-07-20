@@ -1262,7 +1262,14 @@ class FixedDatabaseIntegration:
                     if isinstance(value, list):
                         logger.warning(f"⚠️ {field_name} is a list: {value}, using first value")
                         if value and len(value) > 0:
-                            return int(float(str(value[0])))
+                            first_val = value[0]
+                            if isinstance(first_val, (int, float)):
+                                return int(first_val)
+                            elif isinstance(first_val, str):
+                                return int(float(first_val))
+                            else:
+                                logger.warning(f"⚠️ First list element of {field_name} is {type(first_val)}: {first_val}, using 0")
+                                return 0
                         return 0
                     elif isinstance(value, (int, float)):
                         return int(value)
@@ -1286,30 +1293,48 @@ class FixedDatabaseIntegration:
                 current_stock_raw = item.get("current_stock", 0)
                 minimum_stock_raw = item.get("minimum_stock", 0)
                 
+                # Debug logging before conversion
+                logger.debug(f"🔧 Raw values for {item.get('name', 'Unknown')}: current_stock={current_stock_raw} (type: {type(current_stock_raw)}), minimum_stock={minimum_stock_raw} (type: {type(minimum_stock_raw)})")
+                
                 current_stock = safe_convert_to_int(current_stock_raw, "current_stock")
                 minimum_stock = safe_convert_to_int(minimum_stock_raw, "minimum_stock")
                 
                 item_name = item.get("name", "Unknown")
                 item_id = item.get("item_id")
                 
+                # Verify the converted values are integers
+                if not isinstance(current_stock, int) or not isinstance(minimum_stock, int):
+                    logger.error(f"❌ Type conversion failed for {item_name}: current_stock={current_stock} (type: {type(current_stock)}), minimum_stock={minimum_stock} (type: {type(minimum_stock)})")
+                    continue
+                
                 logger.debug(f"📦 Checking {item_name}: current={current_stock}, minimum={minimum_stock}")
                 
-                # Check if stock is low
-                if current_stock <= minimum_stock:
-                    logger.info(f"🚨 Low stock detected for {item_name}: {current_stock} <= {minimum_stock}")
-                    alert_id = await self.create_alert_from_inventory(item)
-                    if alert_id:
-                        alerts_created += 1
-                        logger.info(f"✅ Alert created: {alert_id}")
+                try:
+                    # Check if stock is low - wrap comparison in try-catch
+                    if current_stock <= minimum_stock:
+                        logger.info(f"🚨 Low stock detected for {item_name}: {current_stock} <= {minimum_stock}")
+                        alert_id = await self.create_alert_from_inventory(item)
+                        if alert_id:
+                            alerts_created += 1
+                            logger.info(f"✅ Alert created: {alert_id}")
+                        else:
+                            logger.info(f"ℹ️ Alert already exists for {item_name} (skipping duplicate)")
                     else:
-                        logger.info(f"ℹ️ Alert already exists for {item_name} (skipping duplicate)")
-                else:
-                    # Stock is sufficient - resolve any existing low stock alerts
-                    logger.debug(f"✅ {item_name} stock is sufficient: {current_stock} > {minimum_stock}")
-                    resolved = await self.auto_resolve_alerts_for_item(item_id, 'low_stock')
-                    if resolved > 0:
-                        alerts_resolved += resolved
-                        logger.info(f"✅ Auto-resolved {resolved} alerts for {item_name} (stock replenished)")
+                        # Stock is sufficient - resolve any existing low stock alerts
+                        logger.debug(f"✅ {item_name} stock is sufficient: {current_stock} > {minimum_stock}")
+                        resolved = await self.auto_resolve_alerts_for_item(item_id, 'low_stock')
+                        if resolved > 0:
+                            alerts_resolved += resolved
+                            logger.info(f"✅ Auto-resolved {resolved} alerts for {item_name} (stock replenished)")
+                except TypeError as te:
+                    logger.error(f"❌ TypeError during comparison for {item_name}: {te}")
+                    logger.error(f"   current_stock: {current_stock} (type: {type(current_stock)})")
+                    logger.error(f"   minimum_stock: {minimum_stock} (type: {type(minimum_stock)})")
+                    logger.error(f"   Raw item data: {item}")
+                    continue
+                except Exception as e:
+                    logger.error(f"❌ Unexpected error processing {item_name}: {e}")
+                    continue
             
             logger.info(f"📊 Alert analysis completed: {alerts_created} alerts created, {alerts_resolved} alerts resolved from {len(items)} items")
             return alerts_created

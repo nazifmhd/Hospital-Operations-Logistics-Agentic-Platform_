@@ -12,6 +12,7 @@ import AutonomousWorkflow from './components/AutonomousWorkflow';
 import TransferManagement from './components/TransferManagement';
 import DepartmentInventory from './components/DepartmentInventory';
 import Settings from './components/Settings';
+import RAGMCPInterface from './components/RAGMCPInterface';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import FloatingAIAssistant from './components/FloatingAIAssistant';
@@ -43,6 +44,7 @@ function App() {
                 <Route path="/batch-management" element={<BatchManagement />} />
                 <Route path="/user-management" element={<UserManagement />} />
                 <Route path="/ai-ml" element={<AIMLDashboard />} />
+                <Route path="/rag-mcp" element={<RAGMCPInterface />} />
                 <Route path="/workflow" element={<AutonomousWorkflow />} />
                 <Route path="/transfers" element={<TransferManagement />} />
                 <Route path="/alerts" element={<AlertsPanel />} />

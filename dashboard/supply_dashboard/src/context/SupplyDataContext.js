@@ -21,44 +21,66 @@ export const SupplyDataProvider = ({ children }) => {
 
   // Initialize WebSocket connection
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:8000/ws`);
+    let reconnectTimeout;
     
-    ws.onopen = () => {
-      console.log('WebSocket connected');
-      setWebsocket(ws);
-    };
-    
-    ws.onmessage = (event) => {
+    const connectWebSocket = () => {
       try {
-        const message = JSON.parse(event.data);
-        if (message.type === 'dashboard_update' || message.type === 'initial_data') {
-          setDashboardData(message.data);
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error('Error parsing WebSocket message:', err);
+        const ws = new WebSocket(`ws://localhost:8000/ws`);
+        
+        ws.onopen = () => {
+          console.log('✅ WebSocket connected');
+          setWebsocket(ws);
+          setError(null); // Clear connection errors when WebSocket connects
+        };
+        
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.type === 'dashboard_update' || message.type === 'initial_data') {
+              setDashboardData(message.data);
+              setLoading(false);
+              setError(null);
+            }
+          } catch (err) {
+            console.error('Error parsing WebSocket message:', err);
+          }
+        };
+        
+        ws.onclose = (event) => {
+          console.log('❌ WebSocket disconnected', event.code, event.reason);
+          setWebsocket(null);
+          
+          // Only attempt reconnect if not a deliberate close
+          if (event.code !== 1000) {
+            console.log('⏳ Attempting to reconnect WebSocket in 5 seconds...');
+            reconnectTimeout = setTimeout(() => {
+              connectWebSocket();
+            }, 5000);
+          }
+        };
+        
+        ws.onerror = (error) => {
+          console.error('❌ WebSocket error:', error);
+          // Don't set error here as we'll fallback to HTTP API
+          console.log('🔄 Falling back to HTTP API');
+        };
+        
+        return ws;
+      } catch (error) {
+        console.error('❌ Failed to create WebSocket:', error);
+        return null;
       }
     };
     
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
-      setWebsocket(null);
-      // Attempt to reconnect after 5 seconds
-      setTimeout(() => {
-        fetchDashboardData();
-      }, 5000);
-    };
-    
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setError('Connection error');
-      // Fallback to HTTP API if WebSocket fails
-      fetchDashboardData();
-    };
+    // Initial WebSocket connection
+    const ws = connectWebSocket();
     
     return () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
       if (ws) {
-        ws.close();
+        ws.close(1000, 'Component unmounting');
       }
     };
   }, []);
@@ -72,7 +94,15 @@ export const SupplyDataProvider = ({ children }) => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/api/v2/dashboard`);
+      setError(null); // Clear any previous errors
+      
+      // Test connection first
+      const healthCheck = await axios.get(`${API_BASE_URL}/health`, { timeout: 5000 });
+      if (healthCheck.status !== 200) {
+        throw new Error('Server health check failed');
+      }
+      
+      const response = await axios.get(`${API_BASE_URL}/api/v2/dashboard`, { timeout: 10000 });
       let data = response.data;
       
       // Ensure alerts and recommendations are arrays (they should come from database now)
@@ -86,11 +116,53 @@ export const SupplyDataProvider = ({ children }) => {
         data.recommendations = [];
       }
       
+      // Add default values for any missing properties
+      data = {
+        totalItems: 0,
+        lowStockCount: 0,
+        alertCount: 0,
+        totalValue: 0,
+        departments: [],
+        alerts: [],
+        recommendations: [],
+        recentActivity: [],
+        ...data
+      };
+      
       setDashboardData(data);
       setError(null);
+      console.log('✅ Dashboard data loaded successfully');
     } catch (err) {
-      setError('Failed to fetch dashboard data');
-      console.error('Error fetching dashboard data:', err);
+      console.error('❌ Error fetching dashboard data:', err);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to connect to server';
+      if (err.code === 'ECONNREFUSED') {
+        errorMessage = 'Server is not running. Please start the backend server.';
+      } else if (err.code === 'ENOTFOUND') {
+        errorMessage = 'Cannot reach server. Check your network connection.';
+      } else if (err.response?.status === 500) {
+        errorMessage = 'Server error. Please check the backend logs.';
+      } else if (err.response?.status === 404) {
+        errorMessage = 'API endpoint not found. Server may be starting up.';
+      } else if (err.message.includes('timeout')) {
+        errorMessage = 'Connection timeout. Server may be busy.';
+      }
+      
+      setError(errorMessage);
+      
+      // Set minimal default data to prevent UI crashes
+      setDashboardData({
+        totalItems: 0,
+        lowStockCount: 0,
+        alertCount: 0,
+        totalValue: 0,
+        departments: [],
+        alerts: [],
+        recommendations: [],
+        recentActivity: [],
+        connectionStatus: 'disconnected'
+      });
     } finally {
       setLoading(false);
     }
