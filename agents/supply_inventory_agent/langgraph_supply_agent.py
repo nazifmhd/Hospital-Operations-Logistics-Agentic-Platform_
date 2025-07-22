@@ -963,6 +963,24 @@ class LangGraphSupplyAgent:
         """Get items with critical stock levels"""
         return [item for item in self.inventory.values() if item.total_available_quantity <= 0]
     
+    async def _check_inventory_levels(self):
+        """Check inventory levels - compatibility method for API endpoints"""
+        try:
+            # Use the existing monitoring cycle functionality
+            await self.run_monitoring_cycle()
+            return {
+                "success": True,
+                "message": "Inventory check completed",
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            self.logger.error(f"Error in inventory check: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+    
     def resolve_alert(self, alert_id: str, resolution_notes: str = "", resolved_by: str = "system"):
         """Resolve an alert"""
         for alert in self.alerts:
