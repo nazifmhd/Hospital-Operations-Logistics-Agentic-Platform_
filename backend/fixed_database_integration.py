@@ -1403,25 +1403,42 @@ class FixedDatabaseIntegration:
                 logger.debug(f"📦 Checking {item_name}: current={current_stock}, minimum={minimum_stock}")
                 
                 try:
-                    # Final safety check - ensure both values are integers before comparison
+                    # ULTRA-AGGRESSIVE type checking and conversion to prevent any list comparisons
+                    
+                    # If current_stock is still not an int, force it
                     if not isinstance(current_stock, int):
                         logger.warning(f"⚠️ current_stock is not int for {item_name}, forcing conversion: {current_stock} (type: {type(current_stock)})")
-                        current_stock = self.safe_convert_to_int(current_stock, "current_stock_final")
+                        if isinstance(current_stock, list):
+                            current_stock = int(current_stock[0]) if current_stock else 0
+                        else:
+                            current_stock = int(current_stock)
                     
+                    # If minimum_stock is still not an int, force it  
                     if not isinstance(minimum_stock, int):
                         logger.warning(f"⚠️ minimum_stock is not int for {item_name}, forcing conversion: {minimum_stock} (type: {type(minimum_stock)})")
-                        minimum_stock = self.safe_convert_to_int(minimum_stock, "minimum_stock_final")
+                        if isinstance(minimum_stock, list):
+                            minimum_stock = int(minimum_stock[0]) if minimum_stock else 0
+                        else:
+                            minimum_stock = int(minimum_stock)
                     
-                    # Check if stock is low - wrap comparison in try-catch
-                    # Deep debugging the comparison operation
-                    logger.debug(f"🔍 About to compare: {current_stock} ({type(current_stock)}) <= {minimum_stock} ({type(minimum_stock)})")
-                    logger.debug(f"🔍 current_stock id: {id(current_stock)}, minimum_stock id: {id(minimum_stock)}")
-                    logger.debug(f"🔍 current_stock repr: {repr(current_stock)}, minimum_stock repr: {repr(minimum_stock)}")
+                    # Final forced conversion with explicit error handling
+                    try:
+                        current_stock_final = int(current_stock)
+                    except (TypeError, ValueError) as e:
+                        logger.error(f"❌ Failed to convert current_stock to int for {item_name}: {current_stock} ({type(current_stock)}) - {e}")
+                        current_stock_final = 0
                     
-                    # Force conversion one more time
-                    current_stock_final = int(current_stock)
-                    minimum_stock_final = int(minimum_stock)
-                    logger.debug(f"🔍 Final values: {current_stock_final} <= {minimum_stock_final}")
+                    try:
+                        minimum_stock_final = int(minimum_stock) 
+                    except (TypeError, ValueError) as e:
+                        logger.error(f"❌ Failed to convert minimum_stock to int for {item_name}: {minimum_stock} ({type(minimum_stock)}) - {e}")
+                        minimum_stock_final = 0
+                    
+                    # Verify both are integers before any operations
+                    assert isinstance(current_stock_final, int), f"current_stock_final is not int: {type(current_stock_final)}"
+                    assert isinstance(minimum_stock_final, int), f"minimum_stock_final is not int: {type(minimum_stock_final)}"
+                    
+                    logger.debug(f"🔍 Final verified values: {current_stock_final} ({type(current_stock_final)}) <= {minimum_stock_final} ({type(minimum_stock_final)})")
                     
                     if current_stock_final <= minimum_stock_final:
                         logger.info(f"🚨 Low stock detected for {item_name}: {current_stock_final} <= {minimum_stock_final}")
