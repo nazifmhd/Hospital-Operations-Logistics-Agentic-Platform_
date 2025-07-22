@@ -8,6 +8,7 @@ import sys
 import asyncio
 import logging
 import uuid
+import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from dotenv import load_dotenv
@@ -30,6 +31,60 @@ class FixedDatabaseIntegration:
         self.engine = None
         self.async_session = None
         self.is_connected = False
+    
+    def safe_convert_to_int(self, value, field_name="unknown"):
+        """Safely convert value to integer, handling lists and other types"""
+        try:
+            if isinstance(value, list):
+                logger.warning(f"⚠️ {field_name} is a list: {value}, using first value")
+                if value and len(value) > 0:
+                    first_val = value[0]
+                    if isinstance(first_val, (int, float)):
+                        return int(first_val)
+                    elif isinstance(first_val, str):
+                        return int(float(first_val))
+                    else:
+                        logger.warning(f"⚠️ First list element of {field_name} is {type(first_val)}: {first_val}, using 0")
+                        return 0
+                return 0
+            elif isinstance(value, (int, float)):
+                return int(value)
+            elif isinstance(value, str):
+                try:
+                    return int(float(value))
+                except ValueError:
+                    logger.warning(f"⚠️ Cannot convert string {field_name} '{value}' to int, using 0")
+                    return 0
+            elif value is None:
+                return 0
+            else:
+                logger.warning(f"⚠️ Unknown type for {field_name}: {type(value)} - {value}, using 0")
+                return 0
+        except Exception as e:
+            logger.error(f"❌ Error converting {field_name}: {e}, using 0")
+            return 0
+    
+    def safe_convert_to_float(self, value, field_name="unknown"):
+        """Safely convert value to float, handling lists and other types"""
+        try:
+            if isinstance(value, list):
+                logger.warning(f"⚠️ {field_name} is a list: {value}, using first value")
+                if value and len(value) > 0:
+                    return float(value[0])
+                return 0.0
+            elif isinstance(value, (int, float)):
+                return float(value)
+            elif isinstance(value, str):
+                try:
+                    return float(value)
+                except ValueError:
+                    return 0.0
+            elif value is None:
+                return 0.0
+            else:
+                return 0.0
+        except Exception:
+            return 0.0
     
     def _get_database_url(self):
         """Get database URL from environment"""
@@ -124,81 +179,42 @@ class FixedDatabaseIntegration:
                 """))
                 inventory_items = []
                 
-                def safe_convert_to_int(value, field_name="unknown"):
-                    """Safely convert value to integer, handling lists and other types"""
-                    try:
-                        if isinstance(value, list):
-                            logger.warning(f"⚠️ {field_name} is a list: {value}, using first value")
-                            if value and len(value) > 0:
-                                return int(float(str(value[0])))
-                            return 0
-                        elif isinstance(value, (int, float)):
-                            return int(value)
-                        elif isinstance(value, str):
-                            try:
-                                return int(float(value))
-                            except ValueError:
-                                return 0
-                        elif value is None:
-                            return 0
-                        else:
-                            return 0
-                    except Exception:
-                        return 0
-                
-                def safe_convert_to_float(value, field_name="unknown"):
-                    """Safely convert value to float, handling lists and other types"""
-                    try:
-                        if isinstance(value, list):
-                            if value and len(value) > 0:
-                                return float(str(value[0]))
-                            return 0.0
-                        elif isinstance(value, (int, float)):
-                            return float(value)
-                        elif isinstance(value, str):
-                            try:
-                                return float(value)
-                            except ValueError:
-                                return 0.0
-                        elif value is None:
-                            return 0.0
-                        else:
-                            return 0.0
-                    except Exception:
-                        return 0.0
-                
                 for row in items_result.fetchall():
-                    current_stock = safe_convert_to_int(row[3], "current_stock")
-                    minimum_stock = safe_convert_to_int(row[4], "minimum_stock")
-                    maximum_stock = safe_convert_to_int(row[5], "maximum_stock")
-                    reorder_point = safe_convert_to_int(row[6], "reorder_point")
+                    current_stock = self.safe_convert_to_int(row[3], "current_stock")
+                    minimum_stock = self.safe_convert_to_int(row[4], "minimum_stock")
+                    maximum_stock = self.safe_convert_to_int(row[5], "maximum_stock")
+                    reorder_point = self.safe_convert_to_int(row[6], "reorder_point")
                     if reorder_point == 0:
                         reorder_point = minimum_stock
-                    unit_cost = safe_convert_to_float(row[7], "unit_cost")
+                    unit_cost = self.safe_convert_to_float(row[7], "unit_cost")
                     
-                    # Determine status based on stock levels
+                    # Determine status based on stock levels - force int conversion before comparison
+                    current_stock_int = int(current_stock)
+                    minimum_stock_int = int(minimum_stock)
+                    reorder_point_int = int(reorder_point)
+                    
                     status = "active"
-                    if current_stock <= minimum_stock:
+                    if current_stock_int <= minimum_stock_int:
                         status = "critical_low"
-                    elif current_stock <= reorder_point:
+                    elif current_stock_int <= reorder_point_int:
                         status = "low_stock"
                     
                     inventory_items.append({
                         "item_id": row[0] or "",
                         "name": row[1] or "",
                         "category": row[2] or "",
-                        "current_stock": current_stock,
-                        "minimum_stock": minimum_stock,
-                        "maximum_stock": maximum_stock,
-                        "reorder_point": reorder_point,
+                        "current_stock": current_stock_int,
+                        "minimum_stock": minimum_stock_int,
+                        "maximum_stock": int(maximum_stock),
+                        "reorder_point": reorder_point_int,
                         "unit_cost": unit_cost,
-                        "total_value": float(current_stock * unit_cost),
+                        "total_value": float(current_stock_int * unit_cost),
                         "location_id": row[8] or "",
                         # Status and analytics
                         "status": status,
-                        "is_low_stock": current_stock <= minimum_stock or current_stock <= reorder_point,
-                        "needs_reorder": current_stock <= reorder_point,
-                        "criticality": "critical" if current_stock <= minimum_stock else ("low" if current_stock <= reorder_point else "normal"),
+                        "is_low_stock": current_stock_int <= minimum_stock_int or current_stock_int <= reorder_point_int,
+                        "needs_reorder": current_stock_int <= reorder_point_int,
+                        "criticality": "critical" if current_stock_int <= minimum_stock_int else ("low" if current_stock_int <= reorder_point_int else "normal"),
                         # Additional fields for frontend compatibility
                         "value_per_unit": unit_cost,
                         "stock_percentage": min(100.0, (current_stock / max(maximum_stock, 1)) * 100),
@@ -309,17 +325,30 @@ class FixedDatabaseIntegration:
             raise
     
     async def get_inventory_data(self):
-        """Get inventory data from database"""
+        """Get inventory data from item_locations table (multi-location view)"""
         try:
-            logger.info("🔍 Fetching inventory data from database...")
+            logger.info("🔍 Fetching inventory data from item_locations table...")
             async with self.async_session() as session:
+                # Get inventory from item_locations with item details
                 result = await session.execute(text("""
-                    SELECT item_id, name, category, unit_of_measure, current_stock, 
-                           minimum_stock, maximum_stock, reorder_point, unit_cost, 
-                           location_id, supplier_id, is_active, description
-                    FROM inventory_items
-                    WHERE is_active = TRUE
-                    ORDER BY name
+                    SELECT 
+                        il.item_id, 
+                        ii.name, 
+                        ii.category, 
+                        ii.unit_of_measure, 
+                        il.quantity as current_stock, 
+                        il.minimum_threshold as minimum_stock, 
+                        il.maximum_capacity as maximum_stock, 
+                        il.minimum_threshold as reorder_point, 
+                        ii.unit_cost, 
+                        il.location_id, 
+                        ii.supplier_id, 
+                        ii.is_active, 
+                        ii.description
+                    FROM item_locations il
+                    LEFT JOIN inventory_items ii ON il.item_id = ii.item_id
+                    WHERE ii.is_active = TRUE OR ii.is_active IS NULL
+                    ORDER BY il.item_id, il.location_id
                 """))
                 
                 inventory_items = []
@@ -365,9 +394,12 @@ class FixedDatabaseIntegration:
                         "data_source": "database"
                     }
                     
-                    # Add debug logging for items that might trigger alerts
-                    if current_stock <= minimum_stock:
-                        logger.info(f"🔴 LOW STOCK ITEM FOUND: {item_data['name']} - Current: {current_stock}, Minimum: {minimum_stock}")
+                    # Add debug logging for items that might trigger alerts - force int comparison
+                    current_stock_check = int(current_stock)
+                    minimum_stock_check = int(minimum_stock)
+                    
+                    if current_stock_check <= minimum_stock_check:
+                        logger.info(f"🔴 LOW STOCK ITEM FOUND: {item_data['name']} - Current: {current_stock_check}, Minimum: {minimum_stock_check}")
                     
                     inventory_items.append(item_data)
                 
@@ -675,6 +707,76 @@ class FixedDatabaseIntegration:
         except Exception as e:
             logger.error(f"❌ Failed to get alerts data from database: {e}")
             raise
+    
+    async def get_purchase_orders_data(self):
+        """Get purchase orders data from database"""
+        try:
+            if not self.is_connected:
+                await self.initialize()
+            
+            async with self.engine.begin() as conn:
+                # Check if purchase_orders table exists
+                table_check = text("""
+                    SELECT COUNT(*) 
+                    FROM information_schema.tables 
+                    WHERE table_name = 'purchase_orders'
+                """)
+                table_exists = await conn.execute(table_check)
+                if not table_exists.scalar():
+                    logger.info("Purchase orders table does not exist - returning empty list")
+                    return {"purchase_orders": [], "data_source": "database"}
+                
+                # Get purchase orders from database
+                result = await conn.execute(text("""
+                    SELECT 
+                        po_id, supplier_id, requester_id, items::text, 
+                        total_amount, status, created_date, expected_delivery,
+                        department, priority, notes, approved_by, approved_date
+                    FROM purchase_orders
+                    ORDER BY created_date DESC
+                """))
+                
+                purchase_orders = []
+                for row in result.fetchall():
+                    try:
+                        # Parse items JSON if it exists
+                        items = []
+                        if row[3]:  # items field
+                            try:
+                                items = json.loads(row[3]) if isinstance(row[3], str) else row[3]
+                            except (json.JSONDecodeError, TypeError):
+                                items = []
+                        
+                        purchase_orders.append({
+                            "po_id": row[0],
+                            "supplier_id": row[1],
+                            "requester_id": row[2],
+                            "items": items,
+                            "total_amount": float(row[4]) if row[4] else 0.0,
+                            "status": row[5],
+                            "created_date": row[6].isoformat() if row[6] else None,
+                            "expected_delivery": row[7].isoformat() if row[7] else None,
+                            "department": row[8],
+                            "priority": row[9],
+                            "notes": row[10],
+                            "approved_by": row[11],
+                            "approved_date": row[12].isoformat() if row[12] else None,
+                            "data_source": "database"
+                        })
+                    except Exception as item_error:
+                        logger.warning(f"Error processing purchase order row: {item_error}")
+                        continue
+                
+                return {
+                    "purchase_orders": purchase_orders,
+                    "data_source": "database",
+                    "last_updated": datetime.now().isoformat()
+                }
+                
+        except Exception as e:
+            logger.info(f"❌ Failed to get purchase orders from database (table may not exist): {e}")
+            # Return empty list if table doesn't exist
+            return {"purchase_orders": [], "data_source": "database"}
     
     async def update_inventory_quantity(self, item_id: str, quantity_change: int, reason: str):
         """Update inventory quantity in the database"""
@@ -1144,23 +1246,46 @@ class FixedDatabaseIntegration:
                 # Create alert for low stock or other inventory issues
                 alert_id = f"ALERT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{item.get('item_id', 'UNK')}"
                 
-                # Determine alert level based on stock levels
-                current_stock = item.get("current_stock", 0)
-                minimum_stock = item.get("minimum_stock", 0)
+                # Determine alert level based on stock levels with safe type conversion
+                current_stock_raw = item.get("current_stock", 0)
+                minimum_stock_raw = item.get("minimum_stock", 0)
                 
-                if current_stock <= 0:
-                    level = "critical"
-                    message = f"{item.get('name', 'Unknown Item')} is out of stock"
-                elif current_stock <= minimum_stock * 0.5:
-                    level = "critical"
-                    message = f"{item.get('name', 'Unknown Item')} is critically low ({current_stock} remaining, minimum: {minimum_stock})"
-                elif current_stock <= minimum_stock:
-                    level = "high"
-                    message = f"{item.get('name', 'Unknown Item')} is below minimum stock ({current_stock} remaining, minimum: {minimum_stock})"
-                else:
+                # Force safe conversion to int with error handling
+                try:
+                    current_stock = self.safe_convert_to_int(current_stock_raw, "current_stock")
+                    minimum_stock = self.safe_convert_to_int(minimum_stock_raw, "minimum_stock")
+                    
+                    # Force final conversion to int to prevent list comparison errors
+                    current_stock = int(current_stock) if not isinstance(current_stock, int) else current_stock
+                    minimum_stock = int(minimum_stock) if not isinstance(minimum_stock, int) else minimum_stock
+                    
+                    # Log before any comparisons in alert creation
+                    logger.debug(f"🔍 Alert creation comparison: current_stock={current_stock} (type: {type(current_stock)}), minimum_stock={minimum_stock} (type: {type(minimum_stock)})")
+                    
+                    # Force all values to integers before any arithmetic operations
+                    current_stock_int = int(current_stock)
+                    minimum_stock_int = int(minimum_stock)
+                    critical_threshold = int(minimum_stock_int * 0.5)
+                    
+                    if current_stock_int <= 0:
+                        level = "critical"
+                        message = f"{item.get('name', 'Unknown Item')} is out of stock"
+                    elif current_stock_int <= critical_threshold:
+                        level = "critical"
+                        message = f"{item.get('name', 'Unknown Item')} is critically low ({current_stock_int} remaining, minimum: {minimum_stock_int})"
+                    elif current_stock_int <= minimum_stock_int:
+                        level = "high"
+                        message = f"{item.get('name', 'Unknown Item')} is below minimum stock ({current_stock_int} remaining, minimum: {minimum_stock_int})"
+                    else:
+                        level = "medium"
+                        message = f"{item.get('name', 'Unknown Item')} is approaching reorder point ({current_stock_int} remaining)"
+                        
+                except (TypeError, ValueError) as e:
+                    logger.error(f"❌ Type conversion error in alert creation for {item.get('name', 'Unknown')}: {e}")
+                    logger.error(f"   Raw values: current_stock_raw={current_stock_raw}, minimum_stock_raw={minimum_stock_raw}")
+                    # Fallback to medium level alert
                     level = "medium"
-                    message = f"{item.get('name', 'Unknown Item')} is approaching reorder point ({current_stock} remaining)"
-                    message = f"{item.get('name', 'Unknown Item')} is approaching reorder point ({current_stock} remaining)"
+                    message = f"{item.get('name', 'Unknown Item')} has inventory data issues - manual review needed"
                 
                 # Insert alert into database
                 insert_query = text("""
@@ -1256,38 +1381,6 @@ class FixedDatabaseIntegration:
             alerts_created = 0
             alerts_resolved = 0
             
-            def safe_convert_to_int(value, field_name="unknown"):
-                """Safely convert value to integer, handling lists and other types"""
-                try:
-                    if isinstance(value, list):
-                        logger.warning(f"⚠️ {field_name} is a list: {value}, using first value")
-                        if value and len(value) > 0:
-                            first_val = value[0]
-                            if isinstance(first_val, (int, float)):
-                                return int(first_val)
-                            elif isinstance(first_val, str):
-                                return int(float(first_val))
-                            else:
-                                logger.warning(f"⚠️ First list element of {field_name} is {type(first_val)}: {first_val}, using 0")
-                                return 0
-                        return 0
-                    elif isinstance(value, (int, float)):
-                        return int(value)
-                    elif isinstance(value, str):
-                        try:
-                            return int(float(value))
-                        except ValueError:
-                            logger.warning(f"⚠️ Cannot convert {field_name} string '{value}' to int, using 0")
-                            return 0
-                    elif value is None:
-                        return 0
-                    else:
-                        logger.warning(f"⚠️ {field_name} has unexpected type {type(value)}: {value}, using 0")
-                        return 0
-                except Exception as e:
-                    logger.warning(f"⚠️ Error converting {field_name} '{value}' to int: {e}, using 0")
-                    return 0
-            
             for item in items:
                 # Safely extract stock values with comprehensive type checking
                 current_stock_raw = item.get("current_stock", 0)
@@ -1296,8 +1389,8 @@ class FixedDatabaseIntegration:
                 # Debug logging before conversion
                 logger.debug(f"🔧 Raw values for {item.get('name', 'Unknown')}: current_stock={current_stock_raw} (type: {type(current_stock_raw)}), minimum_stock={minimum_stock_raw} (type: {type(minimum_stock_raw)})")
                 
-                current_stock = safe_convert_to_int(current_stock_raw, "current_stock")
-                minimum_stock = safe_convert_to_int(minimum_stock_raw, "minimum_stock")
+                current_stock = self.safe_convert_to_int(current_stock_raw, "current_stock")
+                minimum_stock = self.safe_convert_to_int(minimum_stock_raw, "minimum_stock")
                 
                 item_name = item.get("name", "Unknown")
                 item_id = item.get("item_id")
@@ -1310,9 +1403,28 @@ class FixedDatabaseIntegration:
                 logger.debug(f"📦 Checking {item_name}: current={current_stock}, minimum={minimum_stock}")
                 
                 try:
+                    # Final safety check - ensure both values are integers before comparison
+                    if not isinstance(current_stock, int):
+                        logger.warning(f"⚠️ current_stock is not int for {item_name}, forcing conversion: {current_stock} (type: {type(current_stock)})")
+                        current_stock = self.safe_convert_to_int(current_stock, "current_stock_final")
+                    
+                    if not isinstance(minimum_stock, int):
+                        logger.warning(f"⚠️ minimum_stock is not int for {item_name}, forcing conversion: {minimum_stock} (type: {type(minimum_stock)})")
+                        minimum_stock = self.safe_convert_to_int(minimum_stock, "minimum_stock_final")
+                    
                     # Check if stock is low - wrap comparison in try-catch
-                    if current_stock <= minimum_stock:
-                        logger.info(f"🚨 Low stock detected for {item_name}: {current_stock} <= {minimum_stock}")
+                    # Deep debugging the comparison operation
+                    logger.debug(f"🔍 About to compare: {current_stock} ({type(current_stock)}) <= {minimum_stock} ({type(minimum_stock)})")
+                    logger.debug(f"🔍 current_stock id: {id(current_stock)}, minimum_stock id: {id(minimum_stock)}")
+                    logger.debug(f"🔍 current_stock repr: {repr(current_stock)}, minimum_stock repr: {repr(minimum_stock)}")
+                    
+                    # Force conversion one more time
+                    current_stock_final = int(current_stock)
+                    minimum_stock_final = int(minimum_stock)
+                    logger.debug(f"🔍 Final values: {current_stock_final} <= {minimum_stock_final}")
+                    
+                    if current_stock_final <= minimum_stock_final:
+                        logger.info(f"🚨 Low stock detected for {item_name}: {current_stock_final} <= {minimum_stock_final}")
                         alert_id = await self.create_alert_from_inventory(item)
                         if alert_id:
                             alerts_created += 1
@@ -1321,7 +1433,7 @@ class FixedDatabaseIntegration:
                             logger.info(f"ℹ️ Alert already exists for {item_name} (skipping duplicate)")
                     else:
                         # Stock is sufficient - resolve any existing low stock alerts
-                        logger.debug(f"✅ {item_name} stock is sufficient: {current_stock} > {minimum_stock}")
+                        logger.debug(f"✅ {item_name} stock is sufficient: {current_stock_final} > {minimum_stock_final}")
                         resolved = await self.auto_resolve_alerts_for_item(item_id, 'low_stock')
                         if resolved > 0:
                             alerts_resolved += resolved
@@ -1374,55 +1486,13 @@ class FixedDatabaseIntegration:
                 locations = locations_result.fetchall()
                 
                 # Calculate automation strategy
-                def safe_convert_to_int(value, field_name="unknown"):
-                    """Safely convert value to integer, handling lists and other types"""
-                    try:
-                        if isinstance(value, list):
-                            if value and len(value) > 0:
-                                return int(float(str(value[0])))
-                            return 0
-                        elif isinstance(value, (int, float)):
-                            return int(value)
-                        elif isinstance(value, str):
-                            try:
-                                return int(float(value))
-                            except ValueError:
-                                return 0
-                        elif value is None:
-                            return 0
-                        else:
-                            return 0
-                    except Exception:
-                        return 0
-                
-                def safe_convert_to_float(value, field_name="unknown"):
-                    """Safely convert value to float, handling lists and other types"""
-                    try:
-                        if isinstance(value, list):
-                            if value and len(value) > 0:
-                                return float(str(value[0]))
-                            return 0.0
-                        elif isinstance(value, (int, float)):
-                            return float(value)
-                        elif isinstance(value, str):
-                            try:
-                                return float(value)
-                            except ValueError:
-                                return 0.0
-                        elif value is None:
-                            return 0.0
-                        else:
-                            return 0.0
-                    except Exception:
-                        return 0.0
-                
                 # Safely extract and convert values
                 item_id_val = str(item_data[0]) if item_data[0] is not None else ""
                 item_name = str(item_data[1]) if item_data[1] is not None else "Unknown"
-                total_stock = safe_convert_to_int(item_data[2], "total_stock")
-                minimum_stock = safe_convert_to_int(item_data[3], "minimum_stock")
-                reorder_point = safe_convert_to_int(item_data[4], "reorder_point")
-                unit_cost = safe_convert_to_float(item_data[5], "unit_cost")
+                total_stock = self.safe_convert_to_int(item_data[2], "total_stock")
+                minimum_stock = self.safe_convert_to_int(item_data[3], "minimum_stock")
+                reorder_point = self.safe_convert_to_int(item_data[4], "reorder_point")
+                unit_cost = self.safe_convert_to_float(item_data[5], "unit_cost")
                 
                 logger.debug(f"📊 Item analysis: {item_name} - Stock: {total_stock}, Min: {minimum_stock}, Reorder: {reorder_point}")
                 
@@ -1450,11 +1520,15 @@ class FixedDatabaseIntegration:
                             "available_for_transfer": available_for_transfer
                         })
                 
-                # Determine automation action
+                # Determine automation action - force int comparison to prevent TypeError
                 automation_action = "none"
                 recommended_actions = []
                 
-                if total_stock <= minimum_stock:
+                # Ensure safe integer comparison
+                total_stock_int = int(total_stock)
+                minimum_stock_int = int(minimum_stock)
+                
+                if total_stock_int <= minimum_stock_int:
                     # Critical - below minimum
                     if total_available_for_transfer > 0:
                         automation_action = "inter_transfer"

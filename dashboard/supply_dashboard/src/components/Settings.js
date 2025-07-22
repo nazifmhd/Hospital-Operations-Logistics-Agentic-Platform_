@@ -38,40 +38,82 @@ const Settings = () => {
     }
   });
 
-  const handleSave = () => {
-    // In a real implementation, this would save to the backend
-    alert('Settings saved successfully!');
+  const handleSave = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/v2/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          settings: settings,
+          updated_by: 'admin',
+          timestamp: new Date().toISOString()
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        alert(`✅ Settings saved successfully!\n\nSettings Version: ${result.version}\nLast Updated: ${new Date().toLocaleString()}\n\n${result.changes_count} changes applied.`);
+      } else {
+        throw new Error('Failed to save settings');
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      alert('❌ Failed to save settings. Please try again.');
+    }
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (window.confirm('Are you sure you want to reset all settings to default?')) {
-      // Reset to default values
-      setSettings({
-        notifications: {
-          lowStock: true,
-          criticalAlerts: true,
-          userActivity: false,
-          systemUpdates: true
-        },
-        inventory: {
-          autoReorder: true,
-          reorderThreshold: 10,
-          defaultLocation: 'WAREHOUSE',
-          batchTracking: true
-        },
-        security: {
-          sessionTimeout: 30,
-          passwordExpiry: 90,
-          twoFactorAuth: false,
-          auditLogging: true
-        },
-        system: {
-          dataRetention: 365,
-          backupFrequency: 'daily',
-          maintenanceWindow: '02:00',
-          timezone: 'UTC-5'
+      try {
+        const response = await fetch('http://localhost:8000/api/v2/settings/reset', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            reset_type: 'factory_defaults',
+            confirm: true
+          })
+        });
+
+        if (response.ok) {
+          // Reset to default values
+          setSettings({
+            notifications: {
+              lowStock: true,
+              criticalAlerts: true,
+              userActivity: false,
+              systemUpdates: true
+            },
+            inventory: {
+              autoReorder: true,
+              reorderThreshold: 10,
+              defaultLocation: 'WAREHOUSE',
+              batchTracking: true
+            },
+            security: {
+              sessionTimeout: 30,
+              passwordExpiry: 90,
+              twoFactorAuth: false,
+              auditLogging: true
+            },
+            system: {
+              dataRetention: 365,
+              backupFrequency: 'daily',
+              maintenanceWindow: '02:00',
+              timezone: 'UTC-5'
+            }
+          });
+          alert('✅ Settings reset to factory defaults!');
+        } else {
+          throw new Error('Failed to reset settings');
         }
-      });
+      } catch (error) {
+        console.error('Error resetting settings:', error);
+        alert('❌ Failed to reset settings. Please try again.');
+      }
     }
   };
 

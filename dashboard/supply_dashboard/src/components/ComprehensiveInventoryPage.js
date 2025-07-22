@@ -28,7 +28,7 @@ const ComprehensiveInventoryPage = () => {
       setLoadingMultiLocation(true);
       // Add timestamp to prevent caching
       const timestamp = new Date().getTime();
-      const response = await fetch(`/api/v3/inventory/multi-location?t=${timestamp}`, {
+      const response = await fetch(`http://localhost:8000/api/v3/inventory/multi-location?t=${timestamp}`, {
         method: 'GET',
         headers: {
           'Cache-Control': 'no-cache',

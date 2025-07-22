@@ -34,7 +34,7 @@ const RAGMCPInterface = () => {
 
   const checkSystemStatus = async () => {
     try {
-      const response = await fetch('/api/v2/rag-mcp/status');
+      const response = await fetch('http://localhost:8000/api/v2/rag-mcp/status');
       const data = await response.json();
       
       setRagStatus({
@@ -55,7 +55,7 @@ const RAGMCPInterface = () => {
 
   const getKnowledgeStats = async () => {
     try {
-      const response = await fetch('/api/v2/rag-mcp/knowledge-stats');
+      const response = await fetch('http://localhost:8000/api/v2/rag-mcp/knowledge-stats');
       if (response.ok) {
         const data = await response.json();
         setKnowledgeStats(data);
@@ -70,7 +70,7 @@ const RAGMCPInterface = () => {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/v2/rag-mcp/enhanced-query', {
+      const response = await fetch('http://localhost:8000/api/v2/rag-mcp/enhanced-query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -112,7 +112,7 @@ const RAGMCPInterface = () => {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/v2/rag-mcp/rag/query', {
+      const response = await fetch('http://localhost:8000/api/v2/rag-mcp/rag/query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -145,7 +145,7 @@ const RAGMCPInterface = () => {
   const callMCPTool = async (toolName, parameters = {}) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/v2/rag-mcp/mcp/tool', {
+      const response = await fetch('http://localhost:8000/api/v2/rag-mcp/mcp/tool', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -179,7 +179,7 @@ const RAGMCPInterface = () => {
   const getRecommendations = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/v2/rag-mcp/recommendations', {
+      const response = await fetch('http://localhost:8000/api/v2/rag-mcp/recommendations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

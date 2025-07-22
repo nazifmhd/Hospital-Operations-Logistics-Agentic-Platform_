@@ -87,7 +87,7 @@ const LLMChatInterface = ({ isOpen, onClose, systemContext }) => {
 
   const processNaturalLanguageQuery = async (query) => {
     try {
-      const response = await fetch('/api/v2/llm/query', {
+      const response = await fetch('http://localhost:8000/api/v2/llm/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

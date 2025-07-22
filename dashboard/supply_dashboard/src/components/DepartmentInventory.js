@@ -17,7 +17,7 @@ const DepartmentInventory = () => {
 
   const fetchDepartments = async () => {
     try {
-      const response = await fetch('/api/v3/departments');
+      const response = await fetch('http://localhost:8000/api/v3/departments');
       const data = await response.json();
       console.log('Departments API response:', data); // Debug log
       setDepartments(data.departments || []);
@@ -29,13 +29,28 @@ const DepartmentInventory = () => {
   const fetchDepartmentInventory = async (departmentId) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/v3/departments/${departmentId}/inventory`);
+      const response = await fetch(`http://localhost:8000/api/v3/departments/${departmentId}/inventory`);
       const data = await response.json();
       console.log('Department inventory response:', data); // Debug log
-      setDepartmentInventory(data.inventory || []);
+      
+      // Ensure we always set an array
+      let inventoryData = [];
+      if (data && data.inventory && data.inventory.items && Array.isArray(data.inventory.items)) {
+        inventoryData = data.inventory.items;
+      } else if (data && data.inventory && Array.isArray(data.inventory)) {
+        inventoryData = data.inventory;
+      } else if (data && Array.isArray(data)) {
+        inventoryData = data;
+      } else if (data && data.items && Array.isArray(data.items)) {
+        inventoryData = data.items;
+      }
+      
+      console.log('Processed inventory data:', inventoryData); // Debug log
+      setDepartmentInventory(inventoryData);
       setSelectedDepartment(departmentId);
     } catch (error) {
       console.error('Error fetching department inventory:', error);
+      setDepartmentInventory([]); // Ensure we set an empty array on error
     } finally {
       setLoading(false);
     }
@@ -43,7 +58,7 @@ const DepartmentInventory = () => {
 
   const fetchRecentActivities = async () => {
     try {
-      const response = await fetch('/api/v3/enhanced-agent/activities');
+      const response = await fetch('http://localhost:8000/api/v3/enhanced-agent/activities');
       const data = await response.json();
       console.log('Activities response:', data); // Debug log
       setActivities(data.activities || []);
@@ -55,7 +70,7 @@ const DepartmentInventory = () => {
 
   const fetchActiveActions = async () => {
     try {
-      const response = await fetch('/api/v3/enhanced-agent/active-actions');
+      const response = await fetch('http://localhost:8000/api/v3/enhanced-agent/active-actions');
       const data = await response.json();
       console.log('Active actions response:', data); // Debug log
       setActiveActions(data.active_actions || []);
@@ -69,7 +84,7 @@ const DepartmentInventory = () => {
     if (!selectedDepartment) return;
     
     try {
-      const response = await fetch(`/api/v3/departments/${selectedDepartment}/decrease-stock`, {
+      const response = await fetch(`http://localhost:8000/api/v3/departments/${selectedDepartment}/decrease-stock`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -103,7 +118,7 @@ const DepartmentInventory = () => {
 
   const triggerAnalysis = async () => {
     try {
-      const response = await fetch('/api/v3/enhanced-agent/analyze', {
+      const response = await fetch('http://localhost:8000/api/v3/enhanced-agent/analyze', {
         method: 'POST'
       });
       const data = await response.json();
@@ -139,8 +154,13 @@ const DepartmentInventory = () => {
     switch (actionType) {
       case 'reorder': return 'bg-blue-100 text-blue-800';
       case 'inter_transfer': return 'bg-purple-100 text-purple-800';
+      case 'auto_transfer': return 'bg-green-100 text-green-800';
+      case 'multi_auto_transfer': return 'bg-emerald-100 text-emerald-800';
+      case 'auto_purchase_order': return 'bg-orange-100 text-orange-800';
       case 'stock_decrease': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-green-100 text-green-800';
+      case 'stock_adjustment': return 'bg-yellow-100 text-yellow-800';
+      case 'critical_alert': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-600';
     }
   };
 
@@ -229,7 +249,7 @@ const DepartmentInventory = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {departmentInventory.length === 0 ? (
+                  {!Array.isArray(departmentInventory) || departmentInventory.length === 0 ? (
                     <tr>
                       <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
                         <Package className="w-8 h-8 mx-auto mb-2 text-gray-400" />
@@ -309,14 +329,25 @@ const DepartmentInventory = () => {
             ) : (
               activities.map((activity, index) => (
                 <div key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                  <div className={`px-2 py-1 rounded text-xs font-medium ${getActionTypeColor(activity.action_type)}`}>
-                    {activity.action_type.replace('_', ' ').toUpperCase()}
+                  <div className={`px-2 py-1 rounded text-xs font-medium ${getActionTypeColor(activity.action_type || 'unknown')}`}>
+                    {(activity.action_type || 'unknown').replace('_', ' ').toUpperCase()}
                   </div>
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-900">{activity.item_name}</div>
-                    <div className="text-xs text-gray-600">{activity.reason}</div>
+                    <div className="text-sm font-medium text-gray-900">{activity.item_name || 'Unknown Item'}</div>
+                    <div className="text-xs text-gray-600">
+                      {activity.reason || activity.location_details || 'No reason provided'}
+                    </div>
+                    {activity.quantity && (
+                      <div className="text-xs text-blue-600 mt-1">
+                        Quantity: {activity.quantity} units
+                        {activity.total_amount && ` | Amount: $${activity.total_amount.toFixed(2)}`}
+                        {activity.po_id && ` | PO: ${activity.po_id}`}
+                      </div>
+                    )}
                     <div className="text-xs text-gray-500 mt-1">
-                      {new Date(activity.timestamp).toLocaleString()}
+                      {activity.timestamp ? new Date(activity.timestamp).toLocaleString() : 'Unknown time'}
+                      {activity.status && ` | Status: ${activity.status}`}
+                      {activity.priority && ` | Priority: ${activity.priority}`}
                     </div>
                   </div>
                 </div>
@@ -336,14 +367,14 @@ const DepartmentInventory = () => {
             ) : (
               activeActions.map((action, index) => (
                 <div key={index} className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg">
-                  <div className={`px-2 py-1 rounded text-xs font-medium ${getActionTypeColor(action.action_type)}`}>
-                    {action.action_type.replace('_', ' ').toUpperCase()}
+                  <div className={`px-2 py-1 rounded text-xs font-medium ${getActionTypeColor(action.action_type || 'unknown')}`}>
+                    {(action.action_type || 'unknown').replace('_', ' ').toUpperCase()}
                   </div>
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-900">{action.item_name}</div>
-                    <div className="text-xs text-blue-600 font-medium">{action.status.toUpperCase()}</div>
+                    <div className="text-sm font-medium text-gray-900">{action.item_name || 'Unknown Item'}</div>
+                    <div className="text-xs text-blue-600 font-medium">{(action.status || 'unknown').toUpperCase()}</div>
                     <div className="text-xs text-gray-500 mt-1">
-                      Started: {new Date(action.created_at).toLocaleString()}
+                      Started: {action.created_at ? new Date(action.created_at).toLocaleString() : 'Unknown time'}
                     </div>
                   </div>
                 </div>

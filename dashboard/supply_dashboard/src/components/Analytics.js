@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSupplyData } from '../context/SupplyDataContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { TrendingUp, Package, DollarSign, Calendar } from 'lucide-react';
+import { TrendingUp, Package, DollarSign, Calendar, Download, FileSpreadsheet, Share2 } from 'lucide-react';
 
 const Analytics = () => {
   const { dashboardData, getUsageAnalytics, getProcurementRecommendations, loading } = useSupplyData();
@@ -50,6 +50,101 @@ const Analytics = () => {
       setUsageData(null); // Reset on error
     } finally {
       setUsageLoading(false);
+    }
+  };
+
+  // Export functions
+  const handleExportCSV = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/v2/analytics/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          format: 'csv',
+          include_charts: false,
+          data_points: ['inventory', 'usage', 'categories']
+        })
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `analytics-report-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        alert('✅ CSV report exported successfully!');
+      } else {
+        throw new Error('Export failed');
+      }
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      alert('❌ Failed to export CSV. Please try again.');
+    }
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/v2/analytics/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          format: 'pdf',
+          include_charts: true,
+          data_points: ['inventory', 'usage', 'categories', 'recommendations']
+        })
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `analytics-report-${new Date().toISOString().split('T')[0]}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        alert('✅ PDF report exported successfully!');
+      } else {
+        throw new Error('Export failed');
+      }
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      alert('❌ Failed to export PDF. Please try again.');
+    }
+  };
+
+  const handleShareReport = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/v2/analytics/share', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          recipients: ['management@hospital.com'],
+          report_type: 'analytics_summary',
+          include_attachments: true
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        alert(`📧 Report shared successfully!\n\nShare ID: ${result.share_id}\nRecipients: ${result.recipients_count}\nExpires: ${result.expiry_date}`);
+      } else {
+        throw new Error('Share failed');
+      }
+    } catch (error) {
+      console.error('Error sharing report:', error);
+      alert('❌ Failed to share report. Please try again.');
     }
   };
 
@@ -113,13 +208,40 @@ const Analytics = () => {
     <div className="space-y-6">
       {/* Page Header */}
       <div className="bg-white shadow-sm rounded-lg p-6">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-          <TrendingUp className="h-6 w-6 mr-2" />
-          Supply Analytics
-        </h1>
-        <p className="mt-2 text-gray-600">
-          Detailed analytics and insights for supply inventory management
-        </p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+              <TrendingUp className="h-6 w-6 mr-2" />
+              Supply Analytics
+            </h1>
+            <p className="mt-2 text-gray-600">
+              Detailed analytics and insights for supply inventory management
+            </p>
+          </div>
+          <div className="flex space-x-3">
+            <button
+              onClick={handleExportCSV}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 flex items-center"
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Export CSV
+            </button>
+            <button
+              onClick={handleExportPDF}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 flex items-center"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Export PDF
+            </button>
+            <button
+              onClick={handleShareReport}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+            >
+              <Share2 className="h-4 w-4 mr-2" />
+              Share Report
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Key Metrics */}

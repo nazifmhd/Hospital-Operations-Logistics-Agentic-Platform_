@@ -1,42 +1,36 @@
 """
-Enhanced Supply Inventory Agent with Automated Reordering and Inter-facility Transfers
-
-This intelligent agent automatically:
-1. Monitors stock levels across all departments
-2. Triggers reorders when hitting reorder points
-3. Initiates inter-facility transfers when below minimum stock
-4. Logs all activities for notifications and dashboard
-5. Manages department-wise inventory operations
+Enhanced Supply Agent with LangGraph Integration
+Provides full compatibility wrapper for the LangGraph-based agent
 """
 
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
-from enum import Enum
 import json
 import uuid
+import os
+import sys
+
+# Import LangGraph agent
+from langgraph_supply_agent import LangGraphSupplyAgent, langgraph_agent
+
+# Import clean data models (no legacy mock data)
+from data_models import (
+    SupplyCategory, AlertLevel, UserRole, PurchaseOrderStatus, 
+    QualityStatus, TransferStatus, InventoryBatch, LocationStock,
+    TransferRequest, SupplyItem, User, SupplyAlert, AuditLog, 
+    Supplier, PurchaseOrder, Budget, ComplianceRecord
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class ActionType(Enum):
-    REORDER = "reorder"
-    INTER_TRANSFER = "inter_transfer"
-    STOCK_DECREASE = "stock_decrease"
-    ALERT_CREATED = "alert_created"
-    TRANSFER_COMPLETED = "transfer_completed"
-
-class ActionPriority(Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
 @dataclass
 class DepartmentInventory:
+    """Department inventory item data"""
     department_id: str
     department_name: str
     location_id: str
@@ -49,10 +43,23 @@ class DepartmentInventory:
     last_updated: datetime
 
 @dataclass
+class ActionType:
+    REORDER = "reorder"
+    INTER_TRANSFER = "inter_transfer" 
+    EMERGENCY_ALERT = "emergency_alert"
+
+@dataclass  
+class ActionPriority:
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+@dataclass
 class AutomatedAction:
     action_id: str
-    action_type: ActionType
-    priority: ActionPriority
+    action_type: str
+    priority: str
     source_department: str
     target_department: Optional[str]
     item_id: str

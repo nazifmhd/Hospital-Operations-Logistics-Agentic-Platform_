@@ -102,7 +102,7 @@ export const SupplyDataProvider = ({ children }) => {
         throw new Error('Server health check failed');
       }
       
-      const response = await axios.get(`${API_BASE_URL}/api/v2/dashboard`, { timeout: 10000 });
+      const response = await axios.get(`${API_BASE_URL}/api/v3/dashboard`, { timeout: 10000 });
       let data = response.data;
       
       // Ensure alerts and recommendations are arrays (they should come from database now)

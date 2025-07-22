@@ -38,7 +38,7 @@ See [project_structure.md](./project_structure.md) for detailed architecture.
 - **Frontend**: React.js with TypeScript
 - **Backend**: Python FastAPI
 - **Database**: PostgreSQL + Redis
-- **Agent Framework**: LangGraph
+- **Agent Framework**: LangGraph + LangChain
 - **Real-time**: WebSocket
 - **Compliance**: HIPAA-compliant architecture
 

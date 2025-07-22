@@ -1,5 +1,18 @@
 """
+LEGACY FILE - NO LONGER IN USE
+
 Supply Inventory Agent for Hospital Operations Platform
+❌ THIS FILE CONTAINS LEGACY CODE AND EXTENSIVE MOCK DATA ❌
+
+⚠️  IMPORTANT: This file is now DEPRECATED
+✅  Use the LangGraph-based agent system instead:
+    - langgraph_supply_agent.py (main LangGraph implementation)
+    - enhanced_supply_agent.py (LangGraph wrapper)
+    - data_models.py (clean data structures only)
+
+🗑️  This file is kept only for historical reference and should NOT be imported
+    All data models have been extracted to data_models.py
+    All functionality has been migrated to LangGraph-based agents
 
 This agent autonomously monitors, manages, and optimizes hospital supply inventory
 including medical supplies, pharmaceuticals, and equipment consumables.
@@ -9,7 +22,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import json
 import uuid
@@ -429,22 +442,25 @@ class PurchaseOrderItem:
 @dataclass
 class PurchaseOrder:
     """Comprehensive purchase order management"""
+    # Required fields (no defaults)
     po_id: str
-    po_number: str
-    supplier_id: str
-    created_by: str
-    created_date: datetime
-    required_date: datetime
-    status: PurchaseOrderStatus
-    total_amount: float
-    currency: str
-    payment_terms: str
-    delivery_address: str
-    items: List[PurchaseOrderItem]
-    approval_workflow: List[Dict[str, Any]]
-    delivery_tracking: Dict[str, Any]
-    invoice_details: Optional[Dict[str, Any]]
-    notes: str
+    
+    # Optional fields with defaults
+    po_number: str = ""
+    supplier_id: str = ""
+    created_by: str = ""
+    delivery_address: str = ""
+    notes: str = ""
+    total_amount: float = 0.0
+    currency: str = "USD"
+    payment_terms: str = "NET30"
+    status: PurchaseOrderStatus = PurchaseOrderStatus.PENDING_APPROVAL
+    created_date: datetime = field(default_factory=datetime.now)
+    required_date: datetime = field(default_factory=lambda: datetime.now() + timedelta(days=3))
+    items: List[PurchaseOrderItem] = field(default_factory=list)
+    approval_workflow: List[Dict[str, Any]] = field(default_factory=list)
+    delivery_tracking: Dict[str, Any] = field(default_factory=dict)
+    invoice_details: Optional[Dict[str, Any]] = None
     
     @property
     def is_overdue(self) -> bool:

@@ -1,5 +1,12 @@
 # RAG and MCP System Requirements for Hospital Supply Chain Platform
 
+# LangGraph and LangChain Framework
+langgraph>=0.0.55
+langchain>=0.1.0
+langchain-core>=0.1.0
+langchain-community>=0.0.10
+langchain-google-genai>=1.0.0
+
 # Core dependencies (already in main requirements.txt)
 fastapi>=0.100.0
 uvicorn>=0.20.0

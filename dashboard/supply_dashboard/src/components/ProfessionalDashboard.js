@@ -109,12 +109,38 @@ const ProfessionalDashboard = () => {
   const handleCreatePurchaseOrder = async () => {
     setActionLoading('po');
     try {
-      // Navigate to autonomous workflow page for purchase order management
-      navigate('/workflow');
-      // The autonomous workflow page has the approval system for purchase orders
+      // Create a new purchase order via API
+      const response = await fetch('http://localhost:8000/api/v2/workflow/purchase_order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          department_id: 'DEPT-001',
+          items: [
+            {
+              item_id: 'ITEM-001',
+              quantity: 100,
+              unit_price: 25.50,
+              justification: 'Emergency restock - low inventory levels'
+            }
+          ],
+          urgency: 'high',
+          requested_by: 'System Admin',
+          notes: 'Created via Quick Action - Professional Dashboard'
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        alert(`✅ Purchase Order Created Successfully!\n\nOrder ID: ${result.order_id}\nStatus: ${result.status}\nTotal Items: ${result.total_items}\nTotal Value: $${result.total_value}\n\nRedirecting to workflow page...`);
+        navigate('/workflow');
+      } else {
+        throw new Error('Failed to create purchase order');
+      }
     } catch (error) {
-      console.error('Error navigating to autonomous workflow:', error);
-      alert('Failed to navigate to purchase order workflow');
+      console.error('Error creating purchase order:', error);
+      alert('Failed to create purchase order. Please try again.');
     } finally {
       setActionLoading(null);
     }
@@ -123,26 +149,81 @@ const ProfessionalDashboard = () => {
   const handleTransferInventory = async () => {
     setActionLoading('transfer');
     try {
-      // Navigate to the transfer management page
-      navigate('/transfers');
+      // Create a smart transfer suggestion via API
+      const response = await fetch('http://localhost:8000/api/v2/transfers/smart-suggestion', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          analysis_type: 'urgent_rebalancing',
+          include_critical_only: true
+        })
+      });
+
+      if (response.ok) {
+        const suggestions = await response.json();
+        alert(`🤖 Smart Transfer Analysis Complete!\n\n${suggestions.recommendations.length} transfer opportunities identified.\n\nRedirecting to transfer management...`);
+        navigate('/transfers', { state: { suggestions: suggestions.recommendations } });
+      } else {
+        // Fallback to regular navigation
+        navigate('/transfers');
+      }
     } catch (error) {
-      console.error('Error accessing transfer functionality:', error);
+      console.error('Error generating transfer suggestions:', error);
+      navigate('/transfers');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleReviewAlerts = () => {
-    navigate('/alerts');
+  const handleReviewAlerts = async () => {
+    try {
+      // Get alert summary before navigation
+      const response = await fetch('http://localhost:8000/api/v2/alerts');
+      if (response.ok) {
+        const alerts = await response.json();
+        const criticalCount = alerts.filter(a => a.priority === 'critical').length;
+        const highCount = alerts.filter(a => a.priority === 'high').length;
+        
+        if (criticalCount > 0 || highCount > 0) {
+          alert(`⚠️ Alert Summary:\n\n• ${criticalCount} Critical Alerts\n• ${highCount} High Priority Alerts\n\nRedirecting to alerts panel...`);
+        }
+      }
+      navigate('/alerts');
+    } catch (error) {
+      console.error('Error fetching alert summary:', error);
+      navigate('/alerts');
+    }
   };
 
   const handleGenerateReport = async () => {
     setActionLoading('report');
     try {
-      // Navigate to analytics page which has reporting capabilities
-      navigate('/analytics');
+      // Generate a comprehensive analytics report
+      const response = await fetch('http://localhost:8000/api/v2/analytics/comprehensive-report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          report_type: 'executive_summary',
+          time_period: '30d',
+          include_forecasting: true,
+          include_recommendations: true
+        })
+      });
+
+      if (response.ok) {
+        const report = await response.json();
+        alert(`📊 Analytics Report Generated!\n\nReport ID: ${report.report_id}\n• ${report.total_items_analyzed} items analyzed\n• ${report.insights_generated} insights generated\n• ${report.recommendations_count} recommendations\n\nRedirecting to analytics dashboard...`);
+        navigate('/analytics', { state: { reportData: report } });
+      } else {
+        navigate('/analytics');
+      }
     } catch (error) {
-      console.error('Error navigating to reports:', error);
+      console.error('Error generating analytics report:', error);
+      navigate('/analytics');
     } finally {
       setActionLoading(null);
     }
