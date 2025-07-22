@@ -116,15 +116,6 @@ try:
 except ImportError as e:
     ENHANCED_AGENT_AVAILABLE = False
     logging.warning(f"⚠️ LangGraph-based Enhanced Supply Agent not available: {e}")
-    
-    # Fallback to original enhanced agent if available
-    try:
-        from enhanced_supply_agent import get_enhanced_supply_agent, EnhancedSupplyInventoryAgent
-        ENHANCED_AGENT_AVAILABLE = True
-        logging.info("✅ Fallback Enhanced Supply Agent modules available")
-    except ImportError as e2:
-        ENHANCED_AGENT_AVAILABLE = False
-        logging.warning(f"⚠️ No Enhanced Supply Agent available: {e2}")
 
 # LLM Integration for Intelligent Supply Management
 LLM_INTEGRATION_AVAILABLE = False
