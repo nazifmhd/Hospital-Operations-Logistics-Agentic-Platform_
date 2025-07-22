@@ -33,32 +33,45 @@ class FixedDatabaseIntegration:
         self.is_connected = False
     
     def safe_convert_to_int(self, value, field_name="unknown"):
-        """Safely convert value to integer, handling lists and other types"""
+        """Safely convert value to integer, handling lists and other types with ultra-aggressive validation"""
         try:
+            # NUCLEAR OPTION: Log everything for debugging
+            logger.debug(f"🔧 Converting {field_name}: {value} (type: {type(value)})")
+            
             if isinstance(value, list):
                 logger.warning(f"⚠️ {field_name} is a list: {value}, using first value")
                 if value and len(value) > 0:
                     first_val = value[0]
                     if isinstance(first_val, (int, float)):
-                        return int(first_val)
+                        result = int(first_val)
+                        logger.debug(f"✅ Converted list {field_name} to int: {result}")
+                        return result
                     elif isinstance(first_val, str):
-                        return int(float(first_val))
+                        result = int(float(first_val))
+                        logger.debug(f"✅ Converted list string {field_name} to int: {result}")
+                        return result
                     else:
-                        logger.warning(f"⚠️ First list element of {field_name} is {type(first_val)}: {first_val}, using 0")
+                        logger.error(f"❌ First list element of {field_name} is {type(first_val)}: {first_val}, using 0")
                         return 0
+                logger.error(f"❌ Empty list for {field_name}, using 0")
                 return 0
             elif isinstance(value, (int, float)):
-                return int(value)
+                result = int(value)
+                logger.debug(f"✅ Converted numeric {field_name} to int: {result}")
+                return result
             elif isinstance(value, str):
                 try:
-                    return int(float(value))
+                    result = int(float(value))
+                    logger.debug(f"✅ Converted string {field_name} to int: {result}")
+                    return result
                 except ValueError:
-                    logger.warning(f"⚠️ Cannot convert string {field_name} '{value}' to int, using 0")
+                    logger.error(f"❌ Cannot convert string {field_name} '{value}' to int, using 0")
                     return 0
             elif value is None:
+                logger.debug(f"✅ None value for {field_name}, using 0")
                 return 0
             else:
-                logger.warning(f"⚠️ Unknown type for {field_name}: {type(value)} - {value}, using 0")
+                logger.error(f"❌ Unknown type for {field_name}: {type(value)} - {value}, using 0")
                 return 0
         except Exception as e:
             logger.error(f"❌ Error converting {field_name}: {e}, using 0")
@@ -188,15 +201,15 @@ class FixedDatabaseIntegration:
                         reorder_point = minimum_stock
                     unit_cost = self.safe_convert_to_float(row[7], "unit_cost")
                     
-                    # Determine status based on stock levels - force int conversion before comparison
+                    # Determine status based on stock levels - force int conversion before comparison with nuclear option
                     current_stock_int = int(current_stock)
                     minimum_stock_int = int(minimum_stock)
                     reorder_point_int = int(reorder_point)
                     
                     status = "active"
-                    if current_stock_int <= minimum_stock_int:
+                    if current_stock_int.__le__(minimum_stock_int):
                         status = "critical_low"
-                    elif current_stock_int <= reorder_point_int:
+                    elif current_stock_int.__le__(reorder_point_int):
                         status = "low_stock"
                     
                     inventory_items.append({
@@ -212,9 +225,9 @@ class FixedDatabaseIntegration:
                         "location_id": row[8] or "",
                         # Status and analytics
                         "status": status,
-                        "is_low_stock": current_stock_int <= minimum_stock_int or current_stock_int <= reorder_point_int,
-                        "needs_reorder": current_stock_int <= reorder_point_int,
-                        "criticality": "critical" if current_stock_int <= minimum_stock_int else ("low" if current_stock_int <= reorder_point_int else "normal"),
+                        "is_low_stock": current_stock_int.__le__(minimum_stock_int) or current_stock_int.__le__(reorder_point_int),
+                        "needs_reorder": current_stock_int.__le__(reorder_point_int),
+                        "criticality": "critical" if current_stock_int.__le__(minimum_stock_int) else ("low" if current_stock_int.__le__(reorder_point_int) else "normal"),
                         # Additional fields for frontend compatibility
                         "value_per_unit": unit_cost,
                         "stock_percentage": min(100.0, (current_stock / max(maximum_stock, 1)) * 100),
@@ -394,12 +407,16 @@ class FixedDatabaseIntegration:
                         "data_source": "database"
                     }
                     
-                    # Add debug logging for items that might trigger alerts - force int comparison
-                    current_stock_check = int(current_stock)
-                    minimum_stock_check = int(minimum_stock)
-                    
-                    if current_stock_check <= minimum_stock_check:
-                        logger.info(f"🔴 LOW STOCK ITEM FOUND: {item_data['name']} - Current: {current_stock_check}, Minimum: {minimum_stock_check}")
+                    # Add debug logging for items that might trigger alerts - force int comparison with nuclear option
+                    try:
+                        current_stock_check = int(current_stock)
+                        minimum_stock_check = int(minimum_stock)
+                        
+                        # Nuclear option comparison using method instead of operator
+                        if current_stock_check.__le__(minimum_stock_check):
+                            logger.info(f"🔴 LOW STOCK ITEM FOUND: {item_data['name']} - Current: {current_stock_check}, Minimum: {minimum_stock_check}")
+                    except Exception as comp_error:
+                        logger.debug(f"Nuclear option comparison failed for {item_data.get('name', 'Unknown')}: {comp_error}")
                     
                     inventory_items.append(item_data)
                 
@@ -905,7 +922,8 @@ class FixedDatabaseIntegration:
                 for location in locations:
                     current_qty = location.current_quantity
                     min_threshold = location.minimum_threshold
-                    is_low_stock = current_qty <= min_threshold
+                    # Nuclear option comparison for low stock detection
+                    is_low_stock = current_qty.__le__(min_threshold)
                     priority = location_priorities.get(location.location_id, 999)
                     
                     locations_list.append({
@@ -1267,13 +1285,14 @@ class FixedDatabaseIntegration:
                     minimum_stock_int = int(minimum_stock)
                     critical_threshold = int(minimum_stock_int * 0.5)
                     
-                    if current_stock_int <= 0:
+                    # Nuclear option comparisons using methods instead of operators
+                    if current_stock_int.__le__(0):
                         level = "critical"
                         message = f"{item.get('name', 'Unknown Item')} is out of stock"
-                    elif current_stock_int <= critical_threshold:
+                    elif current_stock_int.__le__(critical_threshold):
                         level = "critical"
                         message = f"{item.get('name', 'Unknown Item')} is critically low ({current_stock_int} remaining, minimum: {minimum_stock_int})"
-                    elif current_stock_int <= minimum_stock_int:
+                    elif current_stock_int.__le__(minimum_stock_int):
                         level = "high"
                         message = f"{item.get('name', 'Unknown Item')} is below minimum stock ({current_stock_int} remaining, minimum: {minimum_stock_int})"
                     else:
@@ -1440,26 +1459,58 @@ class FixedDatabaseIntegration:
                     
                     logger.debug(f"🔍 Final verified values: {current_stock_final} ({type(current_stock_final)}) <= {minimum_stock_final} ({type(minimum_stock_final)})")
                     
-                    if current_stock_final <= minimum_stock_final:
-                        logger.info(f"🚨 Low stock detected for {item_name}: {current_stock_final} <= {minimum_stock_final}")
-                        alert_id = await self.create_alert_from_inventory(item)
-                        if alert_id:
-                            alerts_created += 1
-                            logger.info(f"✅ Alert created: {alert_id}")
+                    # Ensure we're working with plain Python ints, not any other numeric type
+                    current_stock_safe = int(current_stock_final)
+                    minimum_stock_safe = int(minimum_stock_final)
+                    
+                    # Double check types one more time
+                    logger.debug(f"🔍 Safe values: {current_stock_safe} ({type(current_stock_safe)}) vs {minimum_stock_safe} ({type(minimum_stock_safe)})")
+                    
+                    # NUCLEAR OPTION: Wrap comparison in its own try-catch
+                    try:
+                        # Convert to basic int one more time
+                        curr_int = int(current_stock_safe)
+                        min_int = int(minimum_stock_safe)
+                        
+                        # Perform comparison with explicit type checking
+                        comparison_result = curr_int.__le__(min_int)  # Using method instead of operator
+                        
+                        if comparison_result:
+                            logger.info(f"🚨 Low stock detected for {item_name}: current={curr_int}, minimum={min_int}")
+                            alert_id = await self.create_alert_from_inventory(item)
+                            if alert_id:
+                                alerts_created += 1
+                                logger.info(f"✅ Alert created: {alert_id}")
+                            else:
+                                logger.info(f"ℹ️ Alert already exists for {item_name} (skipping duplicate)")
                         else:
-                            logger.info(f"ℹ️ Alert already exists for {item_name} (skipping duplicate)")
-                    else:
-                        # Stock is sufficient - resolve any existing low stock alerts
-                        logger.debug(f"✅ {item_name} stock is sufficient: {current_stock_final} > {minimum_stock_final}")
-                        resolved = await self.auto_resolve_alerts_for_item(item_id, 'low_stock')
-                        if resolved > 0:
-                            alerts_resolved += resolved
-                            logger.info(f"✅ Auto-resolved {resolved} alerts for {item_name} (stock replenished)")
-                except TypeError as te:
-                    logger.error(f"❌ TypeError during comparison for {item_name}: {te}")
-                    logger.error(f"   current_stock: {current_stock} (type: {type(current_stock)})")
-                    logger.error(f"   minimum_stock: {minimum_stock} (type: {type(minimum_stock)})")
-                    logger.error(f"   Raw item data: {item}")
+                            # Stock is sufficient - resolve any existing low stock alerts
+                            logger.debug(f"✅ {item_name} stock is sufficient: current={curr_int}, minimum={min_int}")
+                            try:
+                                resolved_alerts = await self.auto_resolve_alerts_for_item(item_id, 'low_stock')
+                                if resolved_alerts and len(resolved_alerts) > 0:
+                                    alerts_resolved += len(resolved_alerts)
+                                    logger.info(f"✅ Auto-resolved {len(resolved_alerts)} alerts for {item_name} (stock replenished)")
+                            except Exception as resolve_error:
+                                logger.error(f"❌ Error auto-resolving alerts for {item_name}: {resolve_error}")
+                                
+                    except Exception as comparison_error:
+                        logger.error(f"❌ Comparison operation failed for {item_name}: {comparison_error}")
+                        logger.error(f"   Attempting direct string comparison as fallback...")
+                        # Fallback: string-based comparison
+                        try:
+                            curr_str = str(current_stock_safe)
+                            min_str = str(minimum_stock_safe)
+                            if curr_str.isdigit() and min_str.isdigit():
+                                if int(curr_str) <= int(min_str):
+                                    logger.info(f"🚨 Low stock detected (fallback) for {item_name}: {curr_str} <= {min_str}")
+                        except Exception as fallback_error:
+                            logger.error(f"❌ Fallback comparison failed for {item_name}: {fallback_error}")
+                            
+                except Exception as te:
+                    logger.error(f"❌ Major error during item processing for {item_name}: {te}")
+                    logger.error(f"   current_stock_safe: {current_stock_safe} (type: {type(current_stock_safe)})")
+                    logger.error(f"   minimum_stock_safe: {minimum_stock_safe} (type: {type(minimum_stock_safe)})")
                     continue
                 except Exception as e:
                     logger.error(f"❌ Unexpected error processing {item_name}: {e}")
