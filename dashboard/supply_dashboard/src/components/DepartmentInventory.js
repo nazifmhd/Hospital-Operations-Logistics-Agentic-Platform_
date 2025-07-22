@@ -29,7 +29,9 @@ const DepartmentInventory = () => {
   const fetchDepartmentInventory = async (departmentId) => {
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/v3/departments/${departmentId}/inventory`);
+      // Add timestamp to prevent caching
+      const timestamp = new Date().getTime();
+      const response = await fetch(`http://localhost:8000/api/v3/departments/${departmentId}/inventory?_t=${timestamp}`);
       const data = await response.json();
       console.log('Department inventory response:', data); // Debug log
       
@@ -100,15 +102,24 @@ const DepartmentInventory = () => {
       console.log('Stock decrease response:', data); // Debug log
       
       if (data.success) {
-        // Refresh inventory
+        // Add a small delay to ensure database commit is complete
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Clear current inventory state to force refresh
+        setDepartmentInventory([]);
+        setLoading(true);
+        
+        // Refresh inventory and other data
         await fetchDepartmentInventory(selectedDepartment);
         await fetchRecentActivities();
         await fetchActiveActions();
         
-        // Show success message
-        alert(`Stock decreased successfully! New level: ${data.new_stock_level}`);
+        // Show success message with more details
+        console.log('✅ Stock decreased successfully:', data);
+        alert(`✅ Stock decreased successfully!\nItem: ${data.item_name || itemId}\nQuantity decreased: ${data.quantity_decreased}\nNew level: ${data.new_stock_level || 'Unknown'}`);
       } else {
-        alert(`Error: ${data.error}`);
+        console.error('❌ Decrease stock failed:', data);
+        alert(`❌ Error: ${data.error || data.message || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error decreasing stock:', error);

@@ -183,6 +183,7 @@ class InventoryItem(Base):
     alerts = relationship("Alert", back_populates="item")
     transfers = relationship("Transfer", back_populates="item")
     audit_logs = relationship("AuditLog", back_populates="item")
+    usage_records = relationship("UsageRecord", back_populates="item", cascade="all, delete-orphan")
     
     # Constraints
     __table_args__ = (
@@ -496,3 +497,30 @@ class Notification(Base):
     
     def __repr__(self):
         return f"<Notification(id='{self.id}', title='{self.title}', is_read={self.is_read})>"
+
+
+# Usage Tracking table
+class UsageRecord(Base):
+    __tablename__ = 'usage_records'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    item_id = Column(String(30), ForeignKey('inventory_items.id'), nullable=False, index=True)
+    department = Column(String(100), nullable=False)
+    quantity_used = Column(Integer, nullable=False)
+    reason = Column(String(255), nullable=True)
+    used_by = Column(String(100), nullable=True)  # User who recorded the usage
+    usage_date = Column(DateTime, default=func.now(), nullable=False, index=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    
+    # Relationships
+    item = relationship("InventoryItem", back_populates="usage_records")
+    
+    # Constraints
+    __table_args__ = (
+        Index('idx_usage_item_date', 'item_id', 'usage_date'),
+        Index('idx_usage_department', 'department'),
+        CheckConstraint('quantity_used > 0', name='check_positive_quantity'),
+    )
+    
+    def __repr__(self):
+        return f"<UsageRecord(item_id='{self.item_id}', quantity={self.quantity_used}, date='{self.usage_date}')>"

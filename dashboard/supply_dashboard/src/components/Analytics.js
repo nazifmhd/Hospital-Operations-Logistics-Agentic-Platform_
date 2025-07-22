@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSupplyData } from '../context/SupplyDataContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { TrendingUp, Package, DollarSign, Calendar, Download, FileSpreadsheet, Share2 } from 'lucide-react';
+import { TrendingUp, Package, DollarSign, Calendar, Download, FileSpreadsheet, Share2, RefreshCw } from 'lucide-react';
 
 const Analytics = () => {
   const { dashboardData, getUsageAnalytics, getProcurementRecommendations, loading } = useSupplyData();
@@ -43,13 +43,23 @@ const Analytics = () => {
   const fetchUsageData = async (itemId) => {
     try {
       setUsageLoading(true);
-      const data = await getUsageAnalytics(itemId);
+      // Add cache-busting timestamp to ensure fresh data
+      const timestamp = new Date().getTime();
+      const data = await getUsageAnalytics(itemId, timestamp);
       setUsageData(data);
     } catch (error) {
       console.error('Failed to fetch usage data:', error);
       setUsageData(null); // Reset on error
     } finally {
       setUsageLoading(false);
+    }
+  };
+
+  // Manual refresh function
+  const handleRefreshUsageData = async () => {
+    if (selectedItem) {
+      console.log('🔄 Manually refreshing usage data for:', selectedItem);
+      await fetchUsageData(selectedItem);
     }
   };
 
@@ -266,7 +276,7 @@ const Analytics = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Avg Item Value</p>
               <p className="text-2xl font-bold text-gray-900">
-                ${(inventory.reduce((sum, item) => sum + (item.total_value || 0), 0) / inventory.length || 0).toFixed(0)}
+                ${inventory.length > 0 ? (inventory.reduce((sum, item) => sum + (item.total_value || 0), 0) / inventory.length).toFixed(0) : '0'}
               </p>
             </div>
           </div>
@@ -280,7 +290,7 @@ const Analytics = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Low Stock %</p>
               <p className="text-2xl font-bold text-gray-900">
-                {((inventory.filter(item => isLowStock(item)).length / inventory.length) * 100).toFixed(1)}%
+                {inventory.length > 0 ? ((inventory.filter(item => isLowStock(item)).length / inventory.length) * 100).toFixed(1) : '0.0'}%
               </p>
             </div>
           </div>
@@ -386,7 +396,19 @@ const Analytics = () => {
       {/* Usage Analytics Section */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-medium text-gray-900">Usage Analytics</h3>
+          <div className="flex items-center space-x-3">
+            <h3 className="text-lg font-medium text-gray-900">Usage Analytics</h3>
+            {selectedItem && (
+              <button
+                onClick={handleRefreshUsageData}
+                disabled={usageLoading}
+                className="flex items-center space-x-1 px-3 py-1 text-sm bg-blue-50 text-blue-600 border border-blue-200 rounded-md hover:bg-blue-100 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${usageLoading ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            )}
+          </div>
           <select
             className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
             value={selectedItem || ''}
@@ -403,9 +425,32 @@ const Analytics = () => {
 
         {usageData && !usageLoading ? (
           <div className="space-y-6">
+            {/* Show usage data even if zero */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
-                <h4 className="text-md font-medium text-gray-700 mb-3">Daily Usage Pattern</h4>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-md font-medium text-gray-700">
+                    Daily Usage Pattern 
+                    {usageData.total_usage === 0 && (
+                      <span className="text-sm text-green-600 ml-2">(No usage recorded)</span>
+                    )}
+                    {usageData.total_usage > 0 && (
+                      <span className="text-sm text-blue-600 ml-2">({usageData.total_usage} units used)</span>
+                    )}
+                  </h4>
+                  {usageData.total_usage > 0 && (
+                    <div className="text-xs text-gray-500">
+                      Last updated: {new Date().toLocaleTimeString()}
+                    </div>
+                  )}
+                </div>
+                {usageData.total_usage > 0 && (
+                  <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs text-blue-700">
+                      📊 This chart shows real usage data from department stock decreases. Use the refresh button to see the latest data after inventory operations.
+                    </p>
+                  </div>
+                )}
                 <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={usageData.usage_history}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -415,35 +460,103 @@ const Analytics = () => {
                     <Line type="monotone" dataKey="usage" stroke="#3B82F6" strokeWidth={2} />
                   </LineChart>
                 </ResponsiveContainer>
+                {usageData.total_usage === 0 && (
+                  <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-700">
+                      ✅ No usage recorded for this item in the last 30 days. This indicates:
+                    </p>
+                    <ul className="text-xs text-green-600 mt-1 ml-4">
+                      <li>• Item has not been transferred between departments</li>
+                      <li>• Stock levels remain stable</li>
+                      <li>• Current inventory may be sufficient</li>
+                    </ul>
+                  </div>
+                )}
               </div>
               
               <div className="space-y-4">
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h5 className="text-sm font-medium text-gray-700">Average Daily Usage</h5>
-                  <p className="text-2xl font-bold text-blue-600">{usageData.summary?.average_daily_usage || usageData.average_daily_usage}</p>
+                  <p className={`text-2xl font-bold ${usageData.total_usage === 0 ? 'text-green-600' : 'text-blue-600'}`}>
+                    {usageData.summary?.average_daily_usage || usageData.average_daily_usage || 0}
+                  </p>
+                  {usageData.total_usage === 0 && (
+                    <p className="text-xs text-green-600 mt-1">No daily consumption</p>
+                  )}
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h5 className="text-sm font-medium text-gray-700">Total Usage (30 days)</h5>
-                  <p className="text-2xl font-bold text-green-600">{usageData.summary?.total_usage || usageData.total_usage_last_30_days}</p>
+                  <p className={`text-2xl font-bold ${usageData.total_usage === 0 ? 'text-green-600' : 'text-green-600'}`}>
+                    {usageData.summary?.total_usage || usageData.total_usage_last_30_days || 0}
+                  </p>
+                  {usageData.total_usage === 0 && (
+                    <p className="text-xs text-green-600 mt-1">Zero consumption recorded</p>
+                  )}
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <h5 className="text-sm font-medium text-gray-700">Projected Depletion</h5>
-                  <p className="text-sm text-gray-600">
-                    {Math.round((inventory.find(item => item.item_id === selectedItem)?.current_stock || 0) / ((usageData.summary?.average_daily_usage || usageData.average_daily_usage) || 1))} days
-                  </p>
+                  <h5 className="text-sm font-medium text-gray-700">
+                    {usageData.total_usage === 0 ? 'Stock Status' : 'Projected Depletion'}
+                  </h5>
+                  {usageData.total_usage === 0 ? (
+                    <p className="text-sm text-green-600 font-medium">
+                      Stock Stable
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-600">
+                      {Math.round((inventory.find(item => item.item_id === selectedItem)?.current_stock || 0) / ((usageData.summary?.average_daily_usage || usageData.average_daily_usage) || 1))} days
+                    </p>
+                  )}
                 </div>
                 {usageData.summary?.trend && (
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h5 className="text-sm font-medium text-gray-700">Usage Trend</h5>
                     <p className={`text-sm font-medium ${
                       usageData.summary.trend === 'increasing' ? 'text-red-600' : 
-                      usageData.summary.trend === 'decreasing' ? 'text-green-600' : 'text-gray-600'
+                      usageData.summary.trend === 'decreasing' ? 'text-green-600' : 
+                      usageData.summary.trend === 'no_usage' ? 'text-green-600' :
+                      'text-gray-600'
                     }`}>
-                      {(usageData.summary.trend || '').charAt(0).toUpperCase() + (usageData.summary.trend || '').slice(1)}
+                      {usageData.summary.trend === 'no_usage' ? 'No Usage' : 
+                       (usageData.summary.trend || '').charAt(0).toUpperCase() + (usageData.summary.trend || '').slice(1)}
                     </p>
                   </div>
                 )}
+                
+                {/* Data Source Information */}
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <h5 className="text-xs font-medium text-blue-700">Data Source</h5>
+                  <p className="text-xs text-blue-600">
+                    {usageData.data_source === 'real_database_transfers' ? '✅ Real transfer data' :
+                     usageData.data_source === 'real_database_no_transfers' ? '✅ Database confirmed (no transfers)' :
+                     usageData.data_source === 'database_error' ? '⚠️ Database error' :
+                     usageData.data_source === 'no_database' ? '⚠️ No database connection' :
+                     '❓ Unknown source'}
+                  </p>
+                </div>
               </div>
+            </div>
+            
+            {/* Department Usage Section */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h5 className="text-md font-medium text-gray-700 mb-3">Department Usage</h5>
+              {usageData.departments && usageData.departments.length > 0 ? (
+                <div className="space-y-2">
+                  {usageData.departments.slice(0, 4).map((dept, index) => (
+                    <div key={index} className="flex justify-between text-sm">
+                      <span>{dept.department}</span>
+                      <div className="text-right">
+                        <span className="font-medium">{dept.usage} units</span>
+                        <span className="text-gray-500 ml-2">({dept.percentage})</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-sm text-green-600">✅ No department transfers recorded</p>
+                  <p className="text-xs text-gray-500 mt-1">All departments have maintained their inventory levels</p>
+                </div>
+              )}
             </div>
             
             {/* Usage Patterns and Forecasting */}
@@ -507,8 +620,19 @@ const Analytics = () => {
             <p>No usage data available for this item.</p>
           </div>
         ) : (
-          <div className="text-center py-8 text-gray-500">
-            Select an item to view detailed usage analytics
+          <div className="text-center py-8">
+            <div className="text-gray-500 mb-4">
+              Select an item to view detailed usage analytics
+            </div>
+            <div className="max-w-md mx-auto p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h5 className="text-sm font-medium text-blue-700 mb-2">💡 How to generate usage data:</h5>
+              <ol className="text-xs text-blue-600 space-y-1">
+                <li>1. Go to Department Inventory page</li>
+                <li>2. Select a department (e.g., ICU-01)</li>
+                <li>3. Use the decrease stock buttons (-1, -5, custom)</li>
+                <li>4. Return here and select that item to see usage charts</li>
+              </ol>
+            </div>
           </div>
         )}
       </div>
@@ -575,7 +699,7 @@ const Analytics = () => {
                 {procurementRecommendations.slice(0, 3).map((rec, index) => (
                   <li key={`rec-${index}`} className="flex items-start">
                     <span className="w-2 h-2 bg-emerald-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                    {rec.description || `${rec.action}: ${rec.item_name} (${rec.suggested_quantity} units)`}
+                    {rec.description || `${rec.reason || rec.action || 'Reorder'}: ${rec.item_name} (${rec.recommended_quantity || rec.suggested_quantity || 'N/A'} units)`}
                   </li>
                 ))}
               </ul>

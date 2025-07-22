@@ -210,9 +210,12 @@ export const SupplyDataProvider = ({ children }) => {
   };
 
   // Get usage analytics
-  const getUsageAnalytics = async (itemId) => {
+  const getUsageAnalytics = async (itemId, cacheBust = null) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/v2/analytics/usage/${itemId}`);
+      const url = cacheBust 
+        ? `${API_BASE_URL}/api/v2/analytics/usage/${itemId}?t=${cacheBust}`
+        : `${API_BASE_URL}/api/v2/analytics/usage/${itemId}`;
+      const response = await axios.get(url);
       return response.data;
     } catch (err) {
       throw new Error('Failed to fetch usage analytics');

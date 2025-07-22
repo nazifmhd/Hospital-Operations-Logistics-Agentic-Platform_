@@ -14,6 +14,9 @@ import uuid
 import os
 import sys
 
+# SQLAlchemy imports for database operations
+from sqlalchemy import text
+
 # Import LangGraph agent
 from langgraph_supply_agent import LangGraphSupplyAgent, langgraph_agent
 
@@ -99,23 +102,27 @@ class EnhancedSupplyInventoryAgent:
     Enhanced wrapper around LangGraph Supply Agent for full API compatibility
     """
     
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, db_integration=None):
+        # Initialize core attributes first using super() to avoid recursion
+        super().__setattr__('logger', logging.getLogger(__name__))
+        
+        # Store database integration instance
+        super().__setattr__('db_integration', db_integration)
         
         # Use the global LangGraph agent instance
-        self.langgraph_agent = langgraph_agent
+        super().__setattr__('langgraph_agent', langgraph_agent)
         
         # Proxy all attributes to the LangGraph agent
-        self._proxy_attributes = [
+        super().__setattr__('_proxy_attributes', [
             'inventory', 'alerts', 'suppliers', 'users', 'locations',
             'purchase_orders', 'transfer_requests', 'audit_logs', 'budgets',
             'compliance_records', 'usage_patterns', 'transfers', 'is_running'
-        ]
+        ])
         
         # Initialize department_inventories for compatibility with real database structure
-        self._department_inventories = None
-        self.active_actions: Dict[str, AutomatedAction] = {}
-        self.activity_log: List[Dict[str, Any]] = []
+        super().__setattr__('_department_inventories', None)
+        super().__setattr__('active_actions', {})
+        super().__setattr__('activity_log', [])
         
         self.logger.info("✅ Enhanced Supply Agent initialized with LangGraph backend")
     
@@ -397,10 +404,16 @@ class EnhancedSupplyInventoryAgent:
     
     def __setattr__(self, name, value):
         """Proxy attribute setting to the LangGraph agent for relevant attributes"""
-        if name in ['logger', 'langgraph_agent', '_proxy_attributes', '_department_inventories']:
+        # During initialization, these attributes must be set directly
+        if name in ['logger', 'langgraph_agent', '_proxy_attributes', '_department_inventories', 'db_integration', 'active_actions', 'activity_log']:
             super().__setattr__(name, value)
-        elif hasattr(self, '_proxy_attributes') and name in self._proxy_attributes:
-            setattr(self.langgraph_agent, name, value)
+        # If we have proxy attributes defined and the attribute should be proxied
+        elif hasattr(self, '_proxy_attributes') and self._proxy_attributes and name in self._proxy_attributes:
+            # Make sure langgraph_agent exists before proxying
+            if hasattr(self, 'langgraph_agent') and self.langgraph_agent:
+                setattr(self.langgraph_agent, name, value)
+            else:
+                super().__setattr__(name, value)
         else:
             super().__setattr__(name, value)
     
@@ -1224,68 +1237,8 @@ class EnhancedSupplyInventoryAgent:
             self.logger.error(f"Error analyzing departments: {e}")
             return 0
 
-    async def decrease_stock(self, department_id: str, item_id: str, quantity: int, reason: str = "consumption"):
-        """Decrease stock for an item and trigger automated processes"""
-        try:
-            # Update inventory
-            if item_id in self.inventory:
-                item = self.inventory[item_id]
-                old_quantity = getattr(item, 'current_stock', getattr(item, 'total_available_quantity', 0))
-                
-                # Decrease stock
-                new_quantity = max(0, old_quantity - quantity)
-                if hasattr(item, 'current_stock'):
-                    item.current_stock = new_quantity
-                elif hasattr(item, 'total_available_quantity'):
-                    item.total_available_quantity = new_quantity
-                
-                # Add usage tracking
-                if not hasattr(self, 'usage_patterns'):
-                    self.usage_patterns = {}
-                if item_id not in self.usage_patterns:
-                    self.usage_patterns[item_id] = []
-                
-                self.usage_patterns[item_id].append({
-                    "timestamp": datetime.now(),
-                    "quantity_used": quantity,
-                    "department": department_id,
-                    "reason": reason
-                })
-                
-                # Log the change
-                self.add_audit_log(
-                    action="stock_decrease",
-                    details={
-                        "item_id": item_id,
-                        "department": department_id,
-                        "quantity_decreased": quantity,
-                        "old_quantity": old_quantity,
-                        "new_quantity": new_quantity,
-                        "reason": reason
-                    },
-                    user_id="system"
-                )
-                
-                # Check if we need to trigger reorder
-                if new_quantity <= item.minimum_stock:
-                    # Trigger automatic reorder
-                    reorder_result = self.process_low_stock_order(item_id, item.minimum_stock * 2)
-                    
-                    # Create alert
-                    self.create_alert(
-                        item_id=item_id,
-                        alert_type="low_stock_auto_reorder",
-                        message=f"Stock decreased to {new_quantity}. Automatic reorder triggered.",
-                        level=AlertLevel.HIGH
-                    )
-                
-                return new_quantity
-            else:
-                raise ValueError(f"Item {item_id} not found")
-                
-        except Exception as e:
-            self.logger.error(f"Error decreasing stock: {e}")
-            raise e
+    # ==================== DUPLICATE METHOD REMOVED ====================
+    # The decrease_stock method was duplicated and has been consolidated below.
 
     async def get_department_inventory(self, department_id: str):
         """Get inventory for a specific department with proper structure"""
@@ -1463,69 +1416,157 @@ class EnhancedSupplyInventoryAgent:
     async def decrease_stock(self, department_id: str, item_id: str, quantity: int, reason: str = "consumption"):
         """Decrease stock for an item and trigger automated processes"""
         try:
-            # Find the item
-            if item_id not in self.inventory:
-                return {"status": "error", "message": "Item not found"}
-            
-            item = self.inventory[item_id]
-            
-            # Check if department has this item
-            location_stock = item.get_location_stock(department_id)
-            if not location_stock:
-                return {"status": "error", "message": "Item not found in this department"}
-            
-            # Check if sufficient stock available
-            if location_stock.current_quantity < quantity:
-                return {"status": "error", "message": "Insufficient stock"}
-            
-            # Decrease the stock
-            location_stock.current_quantity -= quantity
-            location_stock.reserved_quantity = max(0, location_stock.reserved_quantity - quantity)
-            
-            # Add audit log
-            await self.update_inventory_with_audit(
-                item_id=item_id,
-                location=department_id,
-                quantity_change=-quantity,
-                user_id="system",
-                reason=reason
-            )
-            
-            # Check if this triggers reorder
-            if item.total_available_quantity <= item.reorder_point:
-                reorder_result = self.process_low_stock_order(item_id, item.reorder_point * 2)
+            # Use database integration to decrease stock
+            if hasattr(self, 'db_integration') and self.db_integration:
+                try:
+                    # Check if item exists in the department
+                    async with self.db_integration.async_session() as session:
+                        # First check if the item exists in this location
+                        check_query = text("""
+                            SELECT il.quantity, ii.name 
+                            FROM item_locations il
+                            JOIN inventory_items ii ON il.item_id = ii.id
+                            WHERE il.item_id = :item_id AND il.location_id = :location_id
+                        """)
+                        
+                        result = await session.execute(check_query, {
+                            "item_id": item_id, 
+                            "location_id": department_id
+                        })
+                        row = result.fetchone()
+                        
+                        if not row:
+                            return {"status": "error", "message": "Item not found in this department"}
+                        
+                        current_quantity = int(row[0]) if row[0] else 0
+                        item_name = row[1] if row[1] else f"Item {item_id}"
+                        
+                        if current_quantity < quantity:
+                            return {"status": "error", "message": f"Insufficient stock. Available: {current_quantity}, Requested: {quantity}"}
+                        
+                        # Decrease the stock in item_locations
+                        update_query = text("""
+                            UPDATE item_locations 
+                            SET quantity = GREATEST(0, quantity - :quantity),
+                                last_updated = :timestamp
+                            WHERE item_id = :item_id AND location_id = :location_id
+                        """)
+                        
+                        await session.execute(update_query, {
+                            "quantity": quantity,
+                            "item_id": item_id,
+                            "location_id": department_id,
+                            "timestamp": datetime.now()
+                        })
+                        
+                        # Get the new quantity
+                        new_quantity = max(0, current_quantity - quantity)
+                        
+                        # Update total stock in inventory_items table
+                        total_query = text("""
+                            UPDATE inventory_items 
+                            SET current_stock = (
+                                SELECT COALESCE(SUM(quantity), 0) 
+                                FROM item_locations 
+                                WHERE item_id = :item_id
+                            ),
+                            last_updated = :timestamp
+                            WHERE id = :item_id
+                        """)
+                        
+                        await session.execute(total_query, {
+                            "item_id": item_id,
+                            "timestamp": datetime.now()
+                        })
+                        
+                        # Record the transfer/usage
+                        transfer_query = text("""
+                            INSERT INTO transfers (
+                                item_id, from_location_id, to_location_id, 
+                                quantity, reason, status, created_at, completed_at
+                            ) VALUES (
+                                :item_id, :from_location, 'CONSUMPTION', 
+                                :quantity, :reason, 'COMPLETED', :timestamp, :timestamp
+                            )
+                        """)
+                        
+                        await session.execute(transfer_query, {
+                            "item_id": item_id,
+                            "from_location": department_id,
+                            "quantity": quantity,
+                            "reason": reason,
+                            "timestamp": datetime.now()
+                        })
+                        
+                        await session.commit()
+                        
+                        self.logger.info(f"✅ Decreased stock for {item_id} in {department_id}: -{quantity} units (new: {new_quantity})")
+                        
+                        # Check if low stock triggers reorder
+                        min_threshold_query = text("""
+                            SELECT il.minimum_threshold, ii.reorder_point
+                            FROM item_locations il
+                            JOIN inventory_items ii ON il.item_id = ii.id
+                            WHERE il.item_id = :item_id AND il.location_id = :location_id
+                        """)
+                        
+                        threshold_result = await session.execute(min_threshold_query, {
+                            "item_id": item_id,
+                            "location_id": department_id
+                        })
+                        threshold_row = threshold_result.fetchone()
+                        
+                        low_stock_triggered = False
+                        if threshold_row:
+                            min_threshold = threshold_row[0] or 5
+                            reorder_point = threshold_row[1] or 10
+                            
+                            if new_quantity <= min_threshold:
+                                low_stock_triggered = True
+                                self.logger.warning(f"⚠️ Low stock alert: {item_id} in {department_id} has {new_quantity} units (threshold: {min_threshold})")
+                        
+                        return {
+                            "status": "success",
+                            "message": f"Stock decreased successfully. New level: {new_quantity}",
+                            "new_stock": new_quantity,
+                            "item_name": item_name,
+                            "department": department_id,
+                            "quantity_decreased": quantity,
+                            "low_stock_triggered": low_stock_triggered
+                        }
+                        
+                except Exception as db_error:
+                    self.logger.error(f"❌ Database error in decrease_stock: {db_error}")
+                    return {"status": "error", "message": f"Database error: {str(db_error)}"}
+            else:
+                # Fallback to in-memory inventory
+                if item_id not in self.inventory:
+                    return {"status": "error", "message": "Item not found"}
                 
-                # Create alert
-                alert = SupplyAlert(
-                    alert_id=str(uuid.uuid4()),
-                    item_id=item_id,
-                    alert_type="low_stock_after_consumption",
-                    message=f"Stock for {item.name} fell below reorder point after consumption in {department_id}",
-                    level=AlertLevel.HIGH,
-                    created_at=datetime.now(),
-                    resolved=False,
-                    department=department_id,
-                    location=department_id
-                )
-                self.alerts.append(alert)
+                item = self.inventory[item_id]
+                old_quantity = getattr(item, 'current_stock', getattr(item, 'total_available_quantity', 0))
+                
+                if old_quantity < quantity:
+                    return {"status": "error", "message": f"Insufficient stock. Available: {old_quantity}"}
+                
+                # Decrease stock
+                new_quantity = max(0, old_quantity - quantity)
+                if hasattr(item, 'current_stock'):
+                    item.current_stock = new_quantity
+                elif hasattr(item, 'total_available_quantity'):
+                    item.total_available_quantity = new_quantity
+                
+                self.logger.info(f"✅ Decreased stock for {item_id}: -{quantity} units (new: {new_quantity})")
                 
                 return {
-                    "status": "success",
-                    "message": "Stock decreased and reorder triggered",
-                    "new_stock": item.total_available_quantity,
-                    "reorder_triggered": True,
-                    "reorder_result": reorder_result
+                    "status": "success", 
+                    "message": f"Stock decreased successfully. New level: {new_quantity}",
+                    "new_stock": new_quantity,
+                    "quantity_decreased": quantity
                 }
-            
-            return {
-                "status": "success", 
-                "message": "Stock decreased successfully",
-                "new_stock": item.total_available_quantity,
-                "reorder_triggered": False
-            }
                 
         except Exception as e:
-            self.logger.error(f"Error decreasing stock: {e}")
+            self.logger.error(f"❌ Error decreasing stock: {e}")
             return {"status": "error", "message": str(e)}
 
     async def get_department_inventory(self, department_id: str):
@@ -1751,12 +1792,15 @@ class EnhancedSupplyInventoryAgent:
             return 0
 
 # Global instance for backward compatibility
-def get_enhanced_supply_agent():
+def get_enhanced_supply_agent(db_integration=None):
     """Get the enhanced supply agent instance"""
     global _enhanced_agent_instance
     if '_enhanced_agent_instance' not in globals():
-        _enhanced_agent_instance = EnhancedSupplyInventoryAgent()
+        _enhanced_agent_instance = EnhancedSupplyInventoryAgent(db_integration=db_integration)
+    elif db_integration and not hasattr(_enhanced_agent_instance, 'db_integration'):
+        # Update existing instance with database integration
+        _enhanced_agent_instance.db_integration = db_integration
     return _enhanced_agent_instance
 
-# Create global instance
+# Create global instance (will be updated with db_integration later)
 enhanced_supply_agent = get_enhanced_supply_agent()
