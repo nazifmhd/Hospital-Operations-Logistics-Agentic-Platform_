@@ -70,3 +70,9 @@ See [project_structure.md](./project_structure.md) for detailed architecture.
 - [Agent Specifications](./docs/agent_specifications.md)
 - [API Documentation](./docs/api.md)
 - [Deployment Guide](./docs/deployment.md)
+
+## 🔧 Recent Updates
+
+- **Favicon Fix (July 2025)**: Added proper favicon.ico and favicon.svg files to resolve 404 errors
+- **PWA Support**: Added manifest.json for Progressive Web App capabilities
+- **Static Assets**: Configured FastAPI static file serving for web assets

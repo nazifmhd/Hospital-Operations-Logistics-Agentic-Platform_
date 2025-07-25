@@ -15,7 +15,8 @@ if backend_dir not in sys.path:
 from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse, Response, FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
@@ -721,6 +722,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Static files middleware for favicon and other assets
+static_dir = os.path.join(os.path.dirname(__file__), "..", "..", "dashboard", "supply_dashboard", "public")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    logging.info(f"✅ Static files mounted from: {static_dir}")
+else:
+    logging.warning(f"⚠️ Static directory not found: {static_dir}")
+
+# Favicon endpoint
+@app.get("/favicon.ico")
+async def favicon():
+    favicon_path = os.path.join(static_dir, "favicon.ico")
+    if os.path.exists(favicon_path):
+        return FileResponse(favicon_path, media_type="image/x-icon")
+    else:
+        # Return a simple 1x1 transparent favicon if file not found
+        return Response(
+            content=b'\x00\x00\x01\x00\x01\x00\x01\x01\x00\x00\x01\x00\x18\x00(\x00\x00\x00\x16\x00\x00\x00(\x00\x00\x00\x01\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
+            media_type="image/x-icon"
+        )
+
 # Include RAG and MCP router
 try:
     # Use the enhanced router with proper error handling
@@ -1387,7 +1409,7 @@ async def get_department_inventory(department_id: str):
                     inventory_items = []
                     for row in rows:
                         current_stock = int(row.current_stock) if row.current_stock else 0
-                        minimum_stock = int(row.minimum_threshold) if row.minimum_threshold else 0
+                        minimum_stock = int(row.minimum_stock) if row.minimum_stock else 0
                         reorder_point = int(row.reorder_point) if row.reorder_point else 0
                         
                         # Calculate status based on stock levels
@@ -1511,6 +1533,162 @@ async def get_department_inventory(department_id: str):
         logging.error(f"❌ Department inventory error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+async def check_and_trigger_autonomous_transfers(item_id: str, department_id: str, current_stock: int):
+    """Check if autonomous transfers are needed after stock decrease and trigger them immediately"""
+    try:
+        actions_taken = []
+        
+        if not db_integration_instance:
+            return "Database not available for autonomous checks"
+        
+        async with db_integration_instance.async_session() as session:
+            # Get the minimum threshold for this item in this location
+            threshold_query = text("""
+                SELECT il.minimum_threshold, ii.name as item_name
+                FROM item_locations il
+                JOIN inventory_items ii ON il.item_id = ii.item_id
+                WHERE il.item_id = :item_id AND il.location_id = :location_id
+            """)
+            
+            result = await session.execute(threshold_query, {
+                "item_id": item_id,
+                "location_id": department_id
+            })
+            threshold_row = result.fetchone()
+            
+            if not threshold_row:
+                return "No threshold data found"
+            
+            minimum_threshold = int(threshold_row[0]) if threshold_row[0] else 0
+            item_name = threshold_row[1]
+            
+            # Check if current stock is below or at minimum threshold
+            if current_stock <= minimum_threshold:
+                logging.info(f"🚨 LOW STOCK DETECTED: {item_name} in {department_id} - Stock: {current_stock}, Threshold: {minimum_threshold}")
+                
+                # Find other locations with surplus stock for this item
+                surplus_query = text("""
+                    SELECT il.location_id, il.quantity, il.minimum_threshold, l.name as location_name
+                    FROM item_locations il
+                    LEFT JOIN locations l ON il.location_id = l.location_id
+                    WHERE il.item_id = :item_id 
+                    AND il.location_id != :current_location
+                    AND il.quantity > COALESCE(il.minimum_threshold, 0) + 5
+                    ORDER BY (il.quantity - COALESCE(il.minimum_threshold, 0)) DESC
+                    LIMIT 3
+                """)
+                
+                surplus_result = await session.execute(surplus_query, {
+                    "item_id": item_id,
+                    "current_location": department_id
+                })
+                surplus_locations = surplus_result.fetchall()
+                
+                if surplus_locations:
+                    # Calculate transfer quantity needed
+                    transfer_needed = max(minimum_threshold * 2 - current_stock, minimum_threshold)
+                    
+                    for source_location in surplus_locations:
+                        source_id = source_location[0]
+                        source_quantity = int(source_location[1])
+                        source_threshold = int(source_location[2]) if source_location[2] else 0
+                        source_name = source_location[3] or source_id
+                        
+                        # Calculate how much we can safely transfer from this location
+                        available_to_transfer = max(0, source_quantity - source_threshold - 5)  # Keep 5 buffer
+                        transfer_quantity = min(transfer_needed, available_to_transfer)
+                        
+                        if transfer_quantity > 0:
+                            # Create transfer record in the transfers table
+                            transfer_id = f"AUTO_{int(datetime.now().timestamp())}_{item_id}_{source_id}_{department_id}"
+                            
+                            transfer_insert = text("""
+                                INSERT INTO transfers 
+                                (transfer_id, item_id, from_location_id, to_location_id, quantity, 
+                                 status, reason, requested_by, requested_date, approved_by, approved_date, completed_date)
+                                VALUES (:transfer_id, :item_id, :from_location_id, :to_location_id, 
+                                        :quantity, 'completed', :reason, 'autonomous_system', :requested_date, 'autonomous_system', :approved_date, :completed_date)
+                            """)
+                            
+                            current_time = datetime.now()
+                            await session.execute(transfer_insert, {
+                                "transfer_id": transfer_id,
+                                "item_id": item_id,
+                                "from_location_id": source_id,
+                                "to_location_id": department_id,
+                                "quantity": transfer_quantity,
+                                "reason": f"Autonomous transfer triggered by low stock ({current_stock} ≤ {minimum_threshold})",
+                                "requested_date": current_time,
+                                "approved_date": current_time,
+                                "completed_date": current_time
+                            })
+                            
+                            # Update source location stock
+                            update_source = text("""
+                                UPDATE item_locations 
+                                SET quantity = quantity - :quantity, last_updated = :timestamp
+                                WHERE item_id = :item_id AND location_id = :location_id
+                            """)
+                            
+                            await session.execute(update_source, {
+                                "quantity": transfer_quantity,
+                                "item_id": item_id,
+                                "location_id": source_id,
+                                "timestamp": datetime.now()
+                            })
+                            
+                            # Update destination location stock
+                            update_dest = text("""
+                                UPDATE item_locations 
+                                SET quantity = quantity + :quantity, last_updated = :timestamp
+                                WHERE item_id = :item_id AND location_id = :location_id
+                            """)
+                            
+                            await session.execute(update_dest, {
+                                "quantity": transfer_quantity,
+                                "item_id": item_id,
+                                "location_id": department_id,
+                                "timestamp": datetime.now()
+                            })
+                            
+                            # Update total stock in inventory_items table
+                            total_stock_update = text("""
+                                UPDATE inventory_items 
+                                SET current_stock = (
+                                    SELECT COALESCE(SUM(quantity), 0) 
+                                    FROM item_locations 
+                                    WHERE item_id = :item_id
+                                ),
+                                updated_at = :timestamp
+                                WHERE item_id = :item_id
+                            """)
+                            
+                            await session.execute(total_stock_update, {
+                                "item_id": item_id,
+                                "timestamp": datetime.now()
+                            })
+                            
+                            actions_taken.append(f"Auto-transferred {transfer_quantity} units from {source_name} to {department_id}")
+                            transfer_needed -= transfer_quantity
+                            
+                            logging.info(f"✅ AUTONOMOUS TRANSFER CREATED: {transfer_quantity} units of {item_name} from {source_name} to {department_id}")
+                            
+                            if transfer_needed <= 0:
+                                break
+                    
+                    await session.commit()
+                    
+                else:
+                    actions_taken.append(f"No surplus locations found for {item_name}")
+            else:
+                actions_taken.append(f"Stock level ({current_stock}) above threshold ({minimum_threshold})")
+        
+        return "; ".join(actions_taken) if actions_taken else "No autonomous actions needed"
+        
+    except Exception as e:
+        logging.error(f"❌ Error in autonomous transfer check: {e}")
+        return f"Error checking autonomous transfers: {str(e)}"
+
 class StockDecreaseRequest(BaseModel):
     item_id: str
     quantity: int
@@ -1602,8 +1780,12 @@ async def decrease_department_stock(
                     # Track usage for analytics in database
                     await track_usage_db(request.item_id, department_id, request.quantity, request.reason or "stock_decrease")
                     
+                    # Check if autonomous transfers are needed immediately after stock decrease
+                    autonomous_actions = await check_and_trigger_autonomous_transfers(request.item_id, department_id, new_quantity)
+                    
                     logging.info(f"✅ Direct DB: Decreased stock for {request.item_id} in {department_id}: -{request.quantity} units (new: {new_quantity})")
                     logging.info(f"📊 Usage tracked in DATABASE: {request.item_id} - {request.quantity} units from {department_id}")
+                    logging.info(f"🤖 Autonomous actions: {autonomous_actions}")
                     
                     return {
                         "success": True,
@@ -1614,7 +1796,7 @@ async def decrease_department_stock(
                         "new_stock_level": new_quantity,
                         "reason": request.reason,
                         "message": f"Stock decreased successfully. New level: {new_quantity}",
-                        "automated_actions_triggered": "Stock usage recorded in database"
+                        "automated_actions_triggered": autonomous_actions
                     }
                     
             except Exception as db_error:

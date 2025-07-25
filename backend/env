@@ -1,0 +1,27 @@
+# Hospital Supply Chain Platform - Environment Configuration
+# ==========================================================
+
+# LLM Configuration
+GEMINI_API_KEY=AIzaSyBkNUrYsbPzIkgPMy7mL-ga94JJxKkD1Cg
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-1.5-flash
+LLM_TEMPERATURE=0.3
+LLM_MAX_TOKENS=4096
+
+# Hospital-Specific Configuration
+HOSPITAL_NAME=General Hospital
+HOSPITAL_TYPE=General Acute Care
+HOSPITAL_LOCATION=City, State
+COMPLIANCE_STANDARDS=Joint Commission,CMS,OSHA
+
+# Performance Monitoring
+LLM_CONFIDENCE_THRESHOLD=0.7
+LLM_RATE_LIMIT_REQUESTS=60
+LLM_RATE_LIMIT_WINDOW=60
+LLM_ENABLE_CACHING=true
+LLM_CACHE_TTL=300
+
+# Development Settings
+DEBUG_LLM=false
+LOG_LLM_INTERACTIONS=true
+MOCK_LLM_RESPONSES=false

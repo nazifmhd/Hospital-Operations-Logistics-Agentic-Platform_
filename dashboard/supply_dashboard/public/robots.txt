@@ -1,0 +1,9 @@
+# Hospital Supply Dashboard
+# Internal hospital system - not for public indexing
+
+User-agent: *
+Disallow: /
+
+# Allow specific paths if needed for public documentation
+# Allow: /docs/
+# Allow: /public-reports/

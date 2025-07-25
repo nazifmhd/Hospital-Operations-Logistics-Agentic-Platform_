@@ -102,6 +102,11 @@ const DepartmentInventory = () => {
       console.log('Stock decrease response:', data); // Debug log
       
       if (data.success) {
+        // Show success message with autonomous actions info
+        const autonomousInfo = data.automated_actions_triggered || "No autonomous actions";
+        console.log('✅ Stock decreased successfully:', data);
+        console.log('🤖 Autonomous actions:', autonomousInfo);
+        
         // Add a small delay to ensure database commit is complete
         await new Promise(resolve => setTimeout(resolve, 500));
         
@@ -114,9 +119,18 @@ const DepartmentInventory = () => {
         await fetchRecentActivities();
         await fetchActiveActions();
         
-        // Show success message with more details
-        console.log('✅ Stock decreased successfully:', data);
-        alert(`✅ Stock decreased successfully!\nItem: ${data.item_name || itemId}\nQuantity decreased: ${data.quantity_decreased}\nNew level: ${data.new_stock_level || 'Unknown'}`);
+        // Show comprehensive success message
+        alert(`✅ Stock decreased successfully!\nItem: ${data.item_name || itemId}\nQuantity decreased: ${data.quantity_decreased}\nNew level: ${data.new_stock_level || 'Unknown'}\n\n🤖 Autonomous Actions: ${autonomousInfo}`);
+        
+        // If autonomous transfers were triggered, refresh again after a longer delay
+        if (autonomousInfo && autonomousInfo.includes("Auto-transferred")) {
+          console.log("🤖 Autonomous transfers detected, refreshing in 2 seconds...");
+          setTimeout(async () => {
+            await fetchDepartmentInventory(selectedDepartment);
+            await fetchRecentActivities();
+            console.log("🔄 Data refreshed after autonomous transfers");
+          }, 2000);
+        }
       } else {
         console.error('❌ Decrease stock failed:', data);
         alert(`❌ Error: ${data.error || data.message || 'Unknown error'}`);

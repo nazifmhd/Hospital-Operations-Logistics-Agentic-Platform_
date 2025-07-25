@@ -1,0 +1,22 @@
+{
+  "short_name": "Hospital Supply",
+  "name": "Hospital Supply Dashboard",
+  "description": "Hospital Supply Inventory Management Dashboard",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "start_url": "./",
+  "display": "standalone",
+  "theme_color": "#2563eb",
+  "background_color": "#ffffff",
+  "categories": ["healthcare", "medical", "productivity"]
+}
