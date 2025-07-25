@@ -1533,6 +1533,71 @@ async def get_department_inventory(department_id: str):
         logging.error(f"❌ Department inventory error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+async def create_low_stock_alert_immediate(item_id: str, item_name: str, current_stock: int, minimum_threshold: int, location_id: str):
+    """Create an immediate alert for low stock items"""
+    try:
+        if not db_integration_instance:
+            logging.warning("No database connection for alert creation")
+            return None
+        
+        async with db_integration_instance.async_session() as session:
+            # Check if alert already exists for this item in this location
+            check_query = text("""
+                SELECT alert_id FROM alerts 
+                WHERE item_id = :item_id AND alert_type = 'low_stock' 
+                AND location_id = :location_id AND is_resolved = FALSE
+                LIMIT 1
+            """)
+            
+            result = await session.execute(check_query, {
+                "item_id": item_id,
+                "location_id": location_id
+            })
+            
+            if result.fetchone():
+                logging.info(f"⚠️ Alert already exists for {item_name} in {location_id}")
+                return None
+            
+            # Create new alert
+            alert_id = f"ALERT-{int(datetime.now().timestamp())}-{item_id}-{location_id}"
+            
+            # Determine alert level and thresholds
+            critical_threshold = max(1, minimum_threshold // 2)
+            if current_stock <= 0:
+                level = "critical"
+                message = f"{item_name} is out of stock in {location_id}"
+            elif current_stock <= critical_threshold:
+                level = "critical"
+                message = f"{item_name} is critically low in {location_id} ({current_stock} remaining, minimum: {minimum_threshold})"
+            else:
+                level = "high"
+                message = f"{item_name} is below minimum stock in {location_id} ({current_stock} remaining, minimum: {minimum_threshold})"
+            
+            # Insert alert using correct schema
+            insert_query = text("""
+                INSERT INTO alerts 
+                (alert_id, alert_type, level, message, item_id, location_id, created_at, is_resolved)
+                VALUES (:alert_id, :alert_type, :level, :message, :item_id, :location_id, :created_at, FALSE)
+            """)
+            
+            await session.execute(insert_query, {
+                "alert_id": alert_id,
+                "alert_type": "low_stock",
+                "level": level,
+                "message": message,
+                "item_id": item_id,
+                "location_id": location_id,
+                "created_at": datetime.now()
+            })
+            
+            await session.commit()
+            logging.info(f"✅ Created low stock alert: {alert_id} for {item_name} in {location_id}")
+            return alert_id
+            
+    except Exception as e:
+        logging.error(f"❌ Error creating low stock alert: {e}")
+        return None
+
 async def check_and_trigger_autonomous_transfers(item_id: str, department_id: str, current_stock: int):
     """Check if autonomous transfers are needed after stock decrease and trigger them immediately"""
     try:
@@ -1565,6 +1630,14 @@ async def check_and_trigger_autonomous_transfers(item_id: str, department_id: st
             # Check if current stock is below or at minimum threshold
             if current_stock <= minimum_threshold:
                 logging.info(f"🚨 LOW STOCK DETECTED: {item_name} in {department_id} - Stock: {current_stock}, Threshold: {minimum_threshold}")
+                
+                # Create alert for low stock item
+                try:
+                    await create_low_stock_alert_immediate(item_id, item_name, current_stock, minimum_threshold, department_id)
+                    actions_taken.append(f"Low stock alert created for {item_name}")
+                except Exception as alert_error:
+                    logging.error(f"❌ Error creating low stock alert: {alert_error}")
+                    actions_taken.append(f"Alert creation failed for {item_name}")
                 
                 # Find other locations with surplus stock for this item
                 surplus_query = text("""
@@ -1677,6 +1750,13 @@ async def check_and_trigger_autonomous_transfers(item_id: str, department_id: st
                                 break
                     
                     await session.commit()
+                    
+                    # Force alert analysis to ensure alerts are created for low stock items
+                    try:
+                        await db_integration_instance.analyze_and_create_alerts()
+                        actions_taken.append("Alert analysis updated")
+                    except Exception as alert_analysis_error:
+                        logging.error(f"❌ Error running alert analysis: {alert_analysis_error}")
                     
                 else:
                     actions_taken.append(f"No surplus locations found for {item_name}")
@@ -4979,20 +5059,84 @@ async def get_usage_analytics_memory(item_id: str, usage_data: dict):
 # Enhanced Analytics with Professional Features
 @app.get("/api/v2/analytics/comprehensive/{item_id}")
 async def get_comprehensive_analytics(item_id: str):
-    """Get comprehensive analytics for specific item"""
+    """Get comprehensive analytics for specific item with real calculated metrics"""
     try:
-        # Get basic usage analytics
-        usage_data = await get_usage_analytics(item_id)
+        # Get basic usage analytics first
+        usage_response = await get_usage_analytics(item_id)
         
-        # Add comprehensive analysis
+        # Calculate real advanced metrics
+        advanced_metrics = {
+            "efficiency_score": 0,
+            "cost_analysis": "unknown",
+            "trend_prediction": "insufficient_data",
+            "data_source": "calculated_from_database"
+        }
+        
+        if db_integration_instance:
+            try:
+                async with db_integration_instance.async_session() as session:
+                    # Get item details
+                    item_result = await session.execute(
+                        text("""
+                        SELECT ii.name, ii.unit_cost, ii.category,
+                               SUM(il.quantity) as total_stock,
+                               AVG(il.minimum_threshold) as avg_min_threshold,
+                               COUNT(il.location_id) as location_count
+                        FROM inventory_items ii
+                        LEFT JOIN item_locations il ON ii.item_id = il.item_id
+                        WHERE ii.item_id = :item_id
+                        GROUP BY ii.item_id, ii.name, ii.unit_cost, ii.category
+                        """),
+                        {"item_id": item_id}
+                    )
+                    
+                    item_data = item_result.fetchone()
+                    if item_data:
+                        name, unit_cost, category, total_stock, avg_min_threshold, location_count = item_data
+                        
+                        # Calculate efficiency score based on real metrics
+                        stock_ratio = total_stock / max(avg_min_threshold, 1) if avg_min_threshold else 0
+                        location_efficiency = min(100, (location_count / 3) * 100)  # Optimal: 3 locations
+                        usage_efficiency = 100 - min(50, usage_response.get("total_usage", 0))  # Less usage = more efficient
+                        
+                        efficiency_score = round((stock_ratio * 30 + location_efficiency * 40 + usage_efficiency * 30) / 100, 1)
+                        advanced_metrics["efficiency_score"] = min(100, max(0, efficiency_score))
+                        
+                        # Cost analysis based on real data
+                        cost_per_location = (unit_cost * total_stock) / max(location_count, 1)
+                        if cost_per_location < 100:
+                            cost_analysis = "cost_effective"
+                        elif cost_per_location < 500:
+                            cost_analysis = "moderate"
+                        else:
+                            cost_analysis = "expensive"
+                        advanced_metrics["cost_analysis"] = cost_analysis
+                        
+                        # Trend prediction based on usage
+                        total_usage = usage_response.get("total_usage", 0)
+                        if total_usage == 0:
+                            trend_prediction = "stable_no_usage"
+                        elif total_usage < 10:
+                            trend_prediction = "stable_low_usage"
+                        elif total_usage < 50:
+                            trend_prediction = "moderate_usage"
+                        else:
+                            trend_prediction = "high_usage"
+                        advanced_metrics["trend_prediction"] = trend_prediction
+                        
+                        logging.info(f"📊 Calculated real advanced metrics for {item_id}: efficiency={efficiency_score}, cost={cost_analysis}")
+                    
+            except Exception as e:
+                logging.warning(f"⚠️ Could not calculate advanced metrics: {e}")
+                advanced_metrics["efficiency_score"] = 50
+                advanced_metrics["cost_analysis"] = "data_unavailable"
+                advanced_metrics["trend_prediction"] = "calculation_error"
+        
+        # Build comprehensive response
         comprehensive_data = {
             "item_id": item_id,
-            "basic_analytics": usage_data,
-            "advanced_metrics": {
-                "efficiency_score": 85.5,
-                "cost_analysis": "optimized",
-                "trend_prediction": "stable"
-            },
+            "basic_analytics": usage_response,
+            "advanced_metrics": advanced_metrics,
             "generated_at": datetime.now().isoformat()
         }
         
@@ -5008,6 +5152,11 @@ async def get_comprehensive_analytics(item_id: str):
                 "daily_average": 0,
                 "departments": [],
                 "usage_history": []
+            },
+            "advanced_metrics": {
+                "efficiency_score": 0,
+                "cost_analysis": "error",
+                "trend_prediction": "error"
             }
         }
 
@@ -5039,6 +5188,11 @@ async def get_notifications():
                         department = activity.get('department', 'Unknown')
                         quantity = activity.get('quantity', 0)
                         
+                        # Skip notifications with missing/invalid data
+                        if not item_name or item_name == 'item' or quantity == 0:
+                            logging.warning(f"⚠️ Skipping incomplete activity: {activity}")
+                            continue
+                        
                         # Create different messages for different action types
                         if action_type == 'inter_transfer':
                             target_dept = activity.get('target_department', 'Unknown')
@@ -5050,15 +5204,18 @@ async def get_notifications():
                         else:
                             message = f"System automatically {action_type.replace('_', ' ')} {quantity} units of {item_name} in {department}"
                             title = f"🤖 Automated {action_type.replace('_', ' ').title()}"
+                        # Create stable notification ID
+                        stable_activity_id = activity.get('activity_id', f"fallback-{hash(str(activity))}")
+                        notification_id = f"notif-agent-{stable_activity_id}"
                         
                         notifications.append({
-                            "id": f"notif-agent-{activity.get('activity_id', uuid.uuid4().hex[:8])}",
+                            "id": notification_id,
                             "type": "automated_action",
                             "title": title,
                             "message": message,
                             "priority": activity.get('priority', 'medium'),
                             "timestamp": activity.get('timestamp', datetime.now().isoformat()),
-                            "read": f"notif-agent-{activity.get('activity_id', uuid.uuid4().hex[:8])}" in read_notifications,
+                            "read": notification_id in read_notifications,
                             "data_source": "enhanced_agent",
                             "category": "automated_supply_action",
                             "repeat_behavior": "show_once"
@@ -5088,28 +5245,29 @@ async def get_notifications():
                 if alert_type in supply_inventory_alert_types and not alert.get('is_resolved', False):
                     alert_id = f"alert-{alert.get('alert_id', alert.get('id', 'unknown'))}"
                     
-                    # Check if this alert notification has been read
-                    is_read = alert_id in read_notifications
-                    
-                    stock_alert_types = {'low_stock', 'reorder_point', 'critical_stock', 'out_of_stock', 'procurement_needed'}
-                    is_stock_alert = alert_type in stock_alert_types
-                    
-                    notifications.append({
-                        "id": alert_id,
-                        "type": alert_type,
-                        "title": f"{alert_type.replace('_', ' ').title()}",
-                        "message": alert.get('message', 'No message'),
-                        "priority": alert.get('level', 'medium'),
-                        "timestamp": alert.get('created_at', datetime.now().isoformat()),
-                        "read": is_read,
-                        "data_source": "supply_inventory_alerts",
-                        "category": "supply_inventory",
-                        "is_stock_alert": is_stock_alert,
-                        "repeat_behavior": "until_fixed" if is_stock_alert else "show_once",
-                        "alert_id": alert.get('alert_id', alert.get('id', 'unknown')),
-                        "item_id": alert.get('item_id', 'Unknown'),
-                        "location_id": alert.get('location_id', 'Unknown')
-                    })
+                # Check if this alert notification has been read
+                stable_notification_id = f"notif-{alert_type}-{alert.get('item_id', 'unk')}-{alert.get('location_id', 'unk')}"
+                is_read = stable_notification_id in read_notifications
+                
+                stock_alert_types = {'low_stock', 'reorder_point', 'critical_stock', 'out_of_stock', 'procurement_needed'}
+                is_stock_alert = alert_type in stock_alert_types
+                
+                notifications.append({
+                    "id": stable_notification_id,
+                    "type": alert_type,
+                    "title": f"{alert_type.replace('_', ' ').title()}",
+                    "message": alert.get('message', 'No message'),
+                    "priority": alert.get('level', 'medium'),
+                    "timestamp": alert.get('created_at', datetime.now().isoformat()),
+                    "read": is_read,
+                    "data_source": "supply_inventory_alerts",
+                    "category": "supply_inventory",
+                    "is_stock_alert": is_stock_alert,
+                    "repeat_behavior": "until_fixed" if is_stock_alert else "show_once",
+                    "alert_id": alert.get('alert_id', alert.get('id', 'unknown')),
+                    "item_id": alert.get('item_id', 'Unknown'),
+                    "location_id": alert.get('location_id', 'Unknown')
+                })
         except Exception as e:
             logging.warning(f"Error fetching supply inventory alerts for notifications: {e}")
         
@@ -5215,15 +5373,24 @@ async def mark_all_notifications_as_read():
                 except:
                     pass
             
-            # Get alert notifications
+            # Get alert notifications with stable IDs
             try:
                 alerts_data = await db_integration_instance.get_alerts_data()
                 alerts_list = alerts_data.get('alerts', [])
                 
+                supply_inventory_alert_types = {
+                    'low_stock', 'reorder_point', 'critical_stock', 'out_of_stock',
+                    'expiring_soon', 'expired', 'quality_alert', 'temperature_alert',
+                    'supplier_delay', 'batch_recall', 'compliance', 'usage_spike',
+                    'threshold_breach', 'demand_spike', 'stock_discrepancy'
+                }
+                
                 for alert in alerts_list:
-                    if not alert.get('is_resolved', False):
+                    alert_type = alert.get("alert_type", "unknown")
+                    if alert_type in supply_inventory_alert_types and not alert.get('is_resolved', False):
+                        stable_notification_id = f"notif-{alert_type}-{alert.get('item_id', 'unk')}-{alert.get('location_id', 'unk')}"
                         notifications.append({
-                            "id": f"alert-{alert.get('alert_id', alert.get('id', 'unknown'))}"
+                            "id": stable_notification_id
                         })
             except:
                 pass
@@ -5535,25 +5702,40 @@ async def update_inventory(request: InventoryUpdateRequest):
         # Try to update in database first
         if db_integration_instance:
             try:
-                # For positive changes (stock increases), use smart distribution
+                # For positive changes (stock increases), check if user specified a target location
                 if request.quantity_change > 0:
-                    logging.info(f"Using smart distribution for stock increase: {request.item_id} +{request.quantity_change}")
-                    
-                    # First update the total stock
-                    await db_integration_instance.update_inventory_quantity(
-                        request.item_id, 
-                        request.quantity_change, 
-                        request.reason
-                    )
-                    
-                    # Then distribute the stock to locations
-                    await db_integration_instance.smart_distribute_to_locations(
-                        request.item_id,
-                        request.quantity_change,
-                        request.reason
-                    )
-                    
-                    logging.info(f"Smart distribution completed for {request.item_id}")
+                    # If user specified a specific location, update that location directly
+                    if request.location and request.location.strip():
+                        logging.info(f"Updating specific location {request.location} for {request.item_id} +{request.quantity_change}")
+                        
+                        # Update specific location directly (user-directed)
+                        await db_integration_instance.update_location_inventory(
+                            request.item_id,
+                            request.location,
+                            request.quantity_change,
+                            f"User-directed fill: {request.reason}"
+                        )
+                        
+                        logging.info(f"Direct location update completed for {request.item_id} in {request.location}")
+                    else:
+                        # Use smart distribution for general stock increases (no specific location)
+                        logging.info(f"Using smart distribution for stock increase: {request.item_id} +{request.quantity_change}")
+                        
+                        # First update the total stock
+                        await db_integration_instance.update_inventory_quantity(
+                            request.item_id, 
+                            request.quantity_change, 
+                            request.reason
+                        )
+                        
+                        # Then distribute the stock to locations
+                        await db_integration_instance.smart_distribute_to_locations(
+                            request.item_id,
+                            request.quantity_change,
+                            request.reason
+                        )
+                        
+                        logging.info(f"Smart distribution completed for {request.item_id}")
                 else:
                     # For negative changes (stock decreases), use normal update
                     await db_integration_instance.update_inventory_quantity(
@@ -7673,22 +7855,54 @@ async def generate_comprehensive_report(request: dict):
 
 @app.post("/api/v2/analytics/export")
 async def export_analytics(request: dict):
-    """Export analytics data"""
+    """Export analytics data using real inventory data"""
     try:
         export_format = request.get('format', 'csv')
         
         if export_format == 'csv':
-            # Return CSV data
-            csv_data = "Item,Quantity,Location,Status\nSurgical Gloves,100,ICU,Active\nSterile Gauze,50,OR,Low Stock"
+            # Get real inventory data for export
+            if db_integration_instance:
+                try:
+                    inventory_data = await db_integration_instance.get_inventory_data()
+                    items = inventory_data.get('items', [])
+                    
+                    # Generate CSV header
+                    csv_lines = ["Item ID,Item Name,Category,Current Stock,Minimum Stock,Unit Cost,Total Value,Location,Status"]
+                    
+                    # Add data rows
+                    for item in items[:50]:  # Limit to first 50 items for reasonable export size
+                        status = "Critical" if item.get('current_stock', 0) <= item.get('minimum_stock', 0) else "Active"
+                        if item.get('current_stock', 0) == 0:
+                            status = "Out of Stock"
+                        elif item.get('current_stock', 0) <= item.get('minimum_stock', 0) * 1.2:
+                            status = "Low Stock"
+                            
+                        csv_lines.append(
+                            f"{item.get('item_id', '')},{item.get('name', '').replace(',', ';')},"
+                            f"{item.get('category', '')},{item.get('current_stock', 0)},"
+                            f"{item.get('minimum_stock', 0)},{item.get('unit_cost', 0)},"
+                            f"{item.get('total_value', 0)},{item.get('location_id', '')},{status}"
+                        )
+                    
+                    csv_data = "\n".join(csv_lines)
+                    logging.info(f"📊 Generated CSV export with {len(items)} real inventory items")
+                    
+                except Exception as e:
+                    logging.error(f"Database export failed, using fallback: {e}")
+                    csv_data = "Item ID,Item Name,Status\nNo data available,Database error,Error"
+            else:
+                csv_data = "Item ID,Item Name,Status\nNo data available,No database connection,Error"
+                
             return Response(content=csv_data, media_type="text/csv")
         
         elif export_format == 'pdf':
-            # Return PDF data (simulated)
-            pdf_data = b"PDF report content would be here"
-            return Response(content=pdf_data, media_type="application/pdf")
+            # For PDF, return a simple response indicating real data would be used
+            pdf_content = f"Analytics Report - {datetime.now().strftime('%Y-%m-%d')}\n\nThis would contain real inventory data in a production PDF export."
+            return Response(content=pdf_content.encode(), media_type="application/pdf")
             
         return JSONResponse(content={"error": "Unsupported format"}, status_code=400)
     except Exception as e:
+        logging.error(f"Export error: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.post("/api/v2/analytics/share")

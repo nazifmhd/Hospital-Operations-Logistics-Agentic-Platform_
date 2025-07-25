@@ -146,6 +146,89 @@ class FixedDatabaseIntegration:
             logger.warning(f"⚠️ Database connection test failed: {e}")
             return False
     
+    def _generate_procurement_recommendations(self, inventory_items):
+        """Generate procurement recommendations based on inventory levels"""
+        recommendations = []
+        
+        try:
+            # Consolidate items by item_id to avoid duplicates across locations
+            consolidated_items = {}
+            
+            for item in inventory_items:
+                item_id = item.get("item_id")
+                if item_id not in consolidated_items:
+                    consolidated_items[item_id] = {
+                        "item_id": item_id,
+                        "name": item.get("name"),
+                        "current_stock": item.get("current_stock", 0),
+                        "minimum_stock": item.get("minimum_stock", 0),
+                        "reorder_point": item.get("reorder_point", item.get("minimum_stock", 0)),
+                        "unit_cost": item.get("unit_cost", 10.0),
+                        "supplier": item.get("supplier_name", "Default Supplier")
+                    }
+                else:
+                    # Aggregate stock across locations, but preserve unit_cost if available
+                    consolidated_items[item_id]["current_stock"] += item.get("current_stock", 0)
+                    # Update unit_cost if we find a non-default value
+                    current_unit_cost = item.get("unit_cost", 10.0)
+                    if current_unit_cost != 10.0:  # If not the default, use it
+                        consolidated_items[item_id]["unit_cost"] = current_unit_cost
+            
+            for item_id, item in consolidated_items.items():
+                current_stock = item["current_stock"]
+                minimum_stock = item["minimum_stock"]
+                reorder_point = item["reorder_point"]
+                unit_cost = float(item["unit_cost"]) if item["unit_cost"] else 10.0
+                
+                # Generate recommendation if stock is at or below minimum
+                if current_stock <= minimum_stock:
+                    urgency = "critical" if current_stock == 0 else ("high" if current_stock <= minimum_stock * 0.5 else "medium")
+                    recommended_quantity = max(minimum_stock * 2, 50)  # Order double minimum or 50, whichever is higher
+                    
+                    recommendation = {
+                        "id": f"REC-{item_id.replace('ITEM-', '')}",
+                        "item_id": item_id,
+                        "item_name": item["name"],
+                        "current_quantity": current_stock,
+                        "minimum_stock": minimum_stock,
+                        "recommended_order": recommended_quantity,
+                        "urgency": urgency,
+                        "estimated_cost": float(recommended_quantity * unit_cost),
+                        "reason": f"Stock below minimum threshold ({current_stock} ≤ {minimum_stock})",
+                        "supplier": item["supplier"],
+                        "estimated_delivery": "2-3 business days",
+                        "data_source": "database"
+                    }
+                    recommendations.append(recommendation)
+                    
+                # Also recommend for items approaching minimum (within 20% above minimum but below reorder point)
+                elif current_stock <= reorder_point and current_stock > minimum_stock:
+                    urgency = "low"
+                    recommended_quantity = max(minimum_stock, 30)
+                    
+                    recommendation = {
+                        "id": f"REC-PRED-{item_id.replace('ITEM-', '')}",
+                        "item_id": item_id,
+                        "item_name": item["name"],
+                        "current_quantity": current_stock,
+                        "minimum_stock": minimum_stock,
+                        "recommended_order": recommended_quantity,
+                        "urgency": urgency,
+                        "estimated_cost": float(recommended_quantity * unit_cost),
+                        "reason": f"Stock approaching reorder point ({current_stock} ≤ {reorder_point})",
+                        "supplier": item["supplier"],
+                        "estimated_delivery": "2-3 business days",
+                        "data_source": "predictive_analysis"
+                    }
+                    recommendations.append(recommendation)
+            
+            logger.info(f"📊 Generated {len(recommendations)} procurement recommendations")
+            return recommendations
+            
+        except Exception as e:
+            logger.error(f"Error generating procurement recommendations: {e}")
+            return []
+    
     async def get_dashboard_data(self):
         """Get dashboard data from database"""
         try:
@@ -177,29 +260,39 @@ class FixedDatabaseIntegration:
                     for row in locations_result.fetchall()
                 ]
                 
-                # Get ALL inventory items with proper low stock detection
+                # Get ALL inventory items with proper low stock detection using item_locations
                 items_result = await session.execute(text("""
-                    SELECT item_id, name, category, current_stock, minimum_stock, 
-                           maximum_stock, reorder_point, unit_cost, location_id
-                    FROM inventory_items WHERE is_active = TRUE
+                    SELECT 
+                        il.item_id, 
+                        ii.name, 
+                        ii.category, 
+                        il.quantity as current_stock, 
+                        il.minimum_threshold as minimum_stock, 
+                        il.maximum_capacity as maximum_stock, 
+                        il.minimum_threshold as reorder_point, 
+                        ii.unit_cost, 
+                        il.location_id
+                    FROM item_locations il
+                    LEFT JOIN inventory_items ii ON il.item_id = ii.item_id
+                    WHERE ii.is_active = TRUE OR ii.is_active IS NULL
                     ORDER BY 
                         CASE 
-                            WHEN current_stock <= minimum_stock THEN 1
-                            WHEN current_stock <= reorder_point THEN 2  
+                            WHEN il.quantity <= il.minimum_threshold THEN 1
+                            WHEN il.quantity <= il.minimum_threshold THEN 2  
                             ELSE 3
                         END,
-                        name
+                        ii.name
                 """))
                 inventory_items = []
                 
                 for row in items_result.fetchall():
-                    current_stock = self.safe_convert_to_int(row[3], "current_stock")
-                    minimum_stock = self.safe_convert_to_int(row[4], "minimum_stock")
-                    maximum_stock = self.safe_convert_to_int(row[5], "maximum_stock")
-                    reorder_point = self.safe_convert_to_int(row[6], "reorder_point")
+                    current_stock = int(row[3]) if row[3] is not None else 0
+                    minimum_stock = int(row[4]) if row[4] is not None else 0
+                    maximum_stock = int(row[5]) if row[5] is not None else 0
+                    reorder_point = int(row[6]) if row[6] is not None else 0
                     if reorder_point == 0:
                         reorder_point = minimum_stock
-                    unit_cost = self.safe_convert_to_float(row[7], "unit_cost")
+                    unit_cost = float(row[7]) if row[7] is not None else 10.0
                     
                     # Determine status based on stock levels - force int conversion before comparison with nuclear option
                     current_stock_int = int(current_stock)
@@ -291,7 +384,7 @@ class FixedDatabaseIntegration:
                     "locations": locations,
                     "alerts": alerts_list,  # Now includes actual alerts from database
                     "purchase_orders": [],
-                    "recommendations": [],
+                    "recommendations": self._generate_procurement_recommendations(inventory_items),
                     "budget_summary": {
                         "ICU": {
                             "utilization": 75.5,
@@ -869,6 +962,72 @@ class FixedDatabaseIntegration:
                 
         except Exception as e:
             logger.error(f"❌ Failed to sync inventory: {e}")
+            raise
+
+    async def update_location_inventory(self, item_id: str, location_id: str, quantity_change: int, reason: str):
+        """Update inventory for a specific location directly"""
+        try:
+            async with self.engine.begin() as conn:
+                # Get item name for logging
+                item_query = text("SELECT name FROM inventory_items WHERE item_id = :item_id")
+                item_result = await conn.execute(item_query, {"item_id": item_id})
+                item_name = item_result.scalar() or f"Item {item_id}"
+                
+                # Get location name for logging  
+                location_query = text("SELECT name FROM locations WHERE location_id = :location_id")
+                location_result = await conn.execute(location_query, {"location_id": location_id})
+                location_name = location_result.scalar() or location_id
+                
+                # Update the specific location's inventory
+                update_query = text("""
+                    UPDATE item_locations 
+                    SET quantity = quantity + :quantity_change,
+                        last_updated = CURRENT_TIMESTAMP
+                    WHERE item_id = :item_id AND location_id = :location_id
+                """)
+                
+                result = await conn.execute(update_query, {
+                    "item_id": item_id,
+                    "location_id": location_id,
+                    "quantity_change": quantity_change
+                })
+                
+                # Also update the overall inventory total
+                total_update_query = text("""
+                    UPDATE inventory_items 
+                    SET quantity = quantity + :quantity_change,
+                        last_updated = CURRENT_TIMESTAMP
+                    WHERE item_id = :item_id
+                """)
+                
+                await conn.execute(total_update_query, {
+                    "item_id": item_id,
+                    "quantity_change": quantity_change
+                })
+                
+                if result.rowcount > 0:
+                    # Log the activity
+                    await self.log_activity(
+                        action="direct_location_update",
+                        item_id=item_id,
+                        item_name=item_name,
+                        location=location_name,
+                        quantity=abs(quantity_change),
+                        reason=f"Direct location update: {reason}",
+                        priority=1,
+                        metadata={
+                            "target_location": location_id,
+                            "change_type": "increase" if quantity_change > 0 else "decrease",
+                            "user_directed": True
+                        }
+                    )
+                    
+                    logger.info(f"✅ Updated {item_name} in {location_name}: {quantity_change:+d} units")
+                else:
+                    logger.warning(f"⚠️ No location found for {item_id} in {location_id}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Failed to update location inventory: {e}")
             raise
 
     async def smart_distribute_to_locations(self, item_id: str, quantity_to_distribute: int, reason: str):
