@@ -8318,9 +8318,30 @@ async def get_smart_transfer_suggestions(request: dict):
                             "source": "balance_optimization"
                         })
         
-        # Log suggestions count for debugging
+                # Log suggestions count for debugging
         logging.info(f"Generated {len(suggestions)} real transfer suggestions from {len(items)} items")
-
+        
+        return JSONResponse(content={
+            "recommendations": suggestions,
+            "total_suggestions": len(suggestions),
+            "analysis_type": request.get('analysis_type', 'standard'),
+            "generated_at": datetime.now().isoformat(),
+            "data_source": "real_inventory_analysis",
+            "algorithm": "Smart Transfer Optimization Engine"
+        })
+        
+    except Exception as e:
+        logging.error(f"Error generating smart transfer suggestions: {e}")
+        return JSONResponse(content={
+            "recommendations": [],
+            "total_suggestions": 0,
+            "analysis_type": request.get('analysis_type', 'standard'),
+            "generated_at": datetime.now().isoformat(),
+            "data_source": "error_fallback",
+            "error": str(e)
+        }, status_code=500)  
+    
+    
 @app.post("/api/v2/analytics/comprehensive-report")
 async def generate_comprehensive_report(request: dict):
     """Generate comprehensive analytics report using real data"""
