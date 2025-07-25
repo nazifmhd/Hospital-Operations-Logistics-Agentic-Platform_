@@ -161,6 +161,7 @@ class Bed(Base):
     number = Column(String(20), nullable=False)
     department_id = Column(String(50), ForeignKey('departments.id'), nullable=False)
     room_number = Column(String(20))
+    floor = Column(String(10), default="1")  # Floor number/identifier
     bed_type = Column(Enum(BedType), nullable=False)
     status = Column(Enum(BedStatus), default=BedStatus.AVAILABLE)
     is_isolation_capable = Column(Boolean, default=False)

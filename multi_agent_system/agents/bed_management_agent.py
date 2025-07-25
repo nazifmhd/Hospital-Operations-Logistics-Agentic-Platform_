@@ -391,23 +391,38 @@ class BedManagementAgent:
         """Analyze patient needs for bed allocation"""
         logger.info("👥 Analyzing patient needs...")
         
-        # Load current patients and their requirements
+        # Load current patients and their requirements with current bed assignments
         async with db_manager.get_async_session() as session:
+            # Query patients with their current bed assignments
+            from sqlalchemy.orm import joinedload
+            from sqlalchemy import and_
+            
             patients_query = await session.execute(
                 select(Patient).where(Patient.is_active == True)
             )
             patients = patients_query.scalars().all()
-        
-        patient_needs = []
-        for patient in patients:
-            if not patient.current_bed:  # Patient needs bed allocation
-                needs = {
-                    "patient_id": patient.id,
-                    "name": patient.name,
-                    "acuity_level": patient.acuity_level.value,
-                    "isolation_required": patient.isolation_required,
-                    "special_needs": patient.special_needs or [],
-                    "urgency": "emergency" if patient.acuity_level.value == "critical" else "routine"
+            
+            patient_needs = []
+            for patient in patients:
+                # Check if patient has current bed assignment
+                bed_assignment_query = await session.execute(
+                    select(BedAssignment).where(
+                        and_(
+                            BedAssignment.patient_id == patient.id,
+                            BedAssignment.discharged_at.is_(None)
+                        )
+                    )
+                )
+                current_assignment = bed_assignment_query.scalar_one_or_none()
+                
+                if not current_assignment:  # Patient needs bed allocation
+                    needs = {
+                        "patient_id": patient.id,
+                        "name": patient.name,
+                        "acuity_level": patient.acuity_level.value if patient.acuity_level else "low",
+                        "isolation_required": patient.isolation_required if hasattr(patient, 'isolation_required') else False,
+                        "special_needs": patient.special_needs if hasattr(patient, 'special_needs') else [],
+                        "urgency": "emergency" if (patient.acuity_level and patient.acuity_level.value == "critical") else "routine"
                 }
                 patient_needs.append(needs)
         
