@@ -94,9 +94,15 @@ const AIMLDashboard = () => {
             const inventoryItems = Array.isArray(data) ? data : (data.inventory || data.items || []);
             console.log('Processed inventory items:', inventoryItems);
             
-            setInventory(inventoryItems);
-            if (inventoryItems.length > 0) {
-                const firstItem = inventoryItems[0].item_id;
+            // Remove duplicates based on item_id
+            const uniqueInventoryItems = inventoryItems.filter((item, index, self) => 
+                index === self.findIndex(i => i.item_id === item.item_id)
+            );
+            console.log('Unique inventory items:', uniqueInventoryItems.length, 'from', inventoryItems.length);
+            
+            setInventory(uniqueInventoryItems);
+            if (uniqueInventoryItems.length > 0) {
+                const firstItem = uniqueInventoryItems[0].item_id;
                 console.log('Setting selected item to:', firstItem);
                 setSelectedItem(firstItem);
             }
@@ -522,118 +528,221 @@ const AIMLDashboard = () => {
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                                 <div className="text-center p-3 bg-blue-50 rounded-lg">
                                     <div className="text-2xl font-bold text-blue-600">
-                                        {optimization.recommendations?.length || 0}
+                                        {optimization.summary?.total_recommendations || 0}
                                     </div>
                                     <div className="text-sm text-gray-600">Total Recommendations</div>
-                                    <div className="text-xs text-gray-500">Items to reorder</div>
+                                    <div className="text-xs text-gray-500">Actions to take</div>
                                 </div>
                                 <div className="text-center p-3 bg-green-50 rounded-lg">
                                     <div className="text-2xl font-bold text-green-600">
-                                        ${optimization.expected_savings?.toLocaleString() || 0}
+                                        ${optimization.financial_impact?.total_monthly_savings?.toLocaleString() || 0}
                                     </div>
-                                    <div className="text-sm text-gray-600">Expected Savings</div>
+                                    <div className="text-sm text-gray-600">Monthly Savings</div>
                                     <div className="text-xs text-gray-500">Cost optimization</div>
                                 </div>
                                 <div className="text-center p-3 bg-purple-50 rounded-lg">
                                     <div className="text-2xl font-bold text-purple-600">
-                                        {optimization.optimization_method || 'N/A'}
+                                        {(optimization.performance_metrics?.overall_efficiency * 100)?.toFixed(1) || 'N/A'}%
                                     </div>
-                                    <div className="text-sm text-gray-600">Method Used</div>
-                                    <div className="text-xs text-gray-500">AI Algorithm</div>
+                                    <div className="text-sm text-gray-600">Efficiency Score</div>
+                                    <div className="text-xs text-gray-500">Performance metric</div>
                                 </div>
                                 <div className="text-center p-3 bg-orange-50 rounded-lg">
                                     <div className="text-2xl font-bold text-orange-600">
-                                        {optimization.recommendations?.filter(r => r.priority === 'High').length || 0}
+                                        {optimization.summary?.redistribution_opportunities || 0}
                                     </div>
-                                    <div className="text-sm text-gray-600">High Priority</div>
-                                    <div className="text-xs text-gray-500">Critical items</div>
+                                    <div className="text-sm text-gray-600">Critical Actions</div>
+                                    <div className="text-xs text-gray-500">High priority items</div>
                                 </div>
                             </div>
                             
+                            {/* Enhanced Optimization Results */}
                             {optimization.recommendations && optimization.recommendations.length > 0 && (
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-200">
-                                        <thead className="bg-gray-50">
-                                            <tr>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Item Details
-                                                </th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Action Required
-                                                </th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Current Stock
-                                                </th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Recommended Order
-                                                </th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Reorder Point
-                                                </th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Safety Stock
-                                                </th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Priority
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="bg-white divide-y divide-gray-200">
-                                            {optimization.recommendations.slice(0, 8).map((rec, index) => (
-                                                <tr key={index} className="hover:bg-gray-50">
-                                                    <td className="px-4 py-4 whitespace-nowrap text-sm">
-                                                        <div>
-                                                            <div className="font-medium text-gray-900">{rec.item_name}</div>
-                                                            <div className="text-xs text-gray-500">{rec.item_id}</div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-4 whitespace-nowrap text-sm">
-                                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                                            rec.action === 'Emergency Reorder' ? 'bg-red-100 text-red-800' :
-                                                            rec.action === 'Reorder' ? 'bg-blue-100 text-blue-800' :
-                                                            'bg-green-100 text-green-800'
-                                                        }`}>
-                                                            {rec.action}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-4 whitespace-nowrap text-sm">
-                                                        <span className={`font-medium ${
-                                                            rec.current_stock === 0 ? 'text-red-600' : 
-                                                            rec.current_stock < (rec.safety_stock || 50) ? 'text-orange-600' :
-                                                            'text-gray-900'
-                                                        }`}>
-                                                            {rec.current_stock || 0}
-                                                        </span>
-                                                        <span className="text-xs text-gray-500 ml-1">units</span>
-                                                    </td>
-                                                    <td className="px-4 py-4 whitespace-nowrap text-sm">
-                                                        <span className="font-medium text-green-600">
-                                                            {rec.recommended_order_qty}
-                                                        </span>
-                                                        <span className="text-xs text-gray-500 ml-1">units</span>
-                                                    </td>
-                                                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                                                        {rec.reorder_point || 'N/A'}
-                                                    </td>
-                                                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                                                        {rec.safety_stock || 'N/A'}
-                                                    </td>
-                                                    <td className="px-4 py-4 whitespace-nowrap text-sm">
-                                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                                            rec.priority === 'High' || rec.priority === 'Critical' ? 'bg-red-100 text-red-800' :
-                                                            rec.priority === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                                                            'bg-green-100 text-green-800'
-                                                        }`}>
-                                                            {rec.priority}
-                                                        </span>
-                                                    </td>
+                                <div className="space-y-6">
+                                    {/* Financial Impact Summary */}
+                                    {optimization.financial_impact && (
+                                        <div className="bg-green-50 p-4 rounded-lg">
+                                            <h3 className="font-semibold text-green-800 mb-2">💰 Financial Impact Analysis</h3>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                                <div>
+                                                    <span className="font-medium">Total Monthly Savings:</span><br/>
+                                                    <span className="text-green-600 font-bold">${optimization.financial_impact.total_monthly_savings}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">ROI Percentage:</span><br/>
+                                                    <span className="text-green-600 font-bold">{optimization.financial_impact.roi_percentage}%</span>
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">Payback Period:</span><br/>
+                                                    <span className="text-blue-600">{optimization.financial_impact.payback_period}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">Implementation:</span><br/>
+                                                    <span className="text-purple-600">{optimization.performance_metrics?.implementation_ease}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Recommendations Table */}
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-gray-200">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                        Recommendation
+                                                    </th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                        Item Details
+                                                    </th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                        Current Status
+                                                    </th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                        Action Required
+                                                    </th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                        Impact
+                                                    </th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                        Priority
+                                                    </th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                    {optimization.recommendations.length > 8 && (
-                                        <div className="mt-3 text-center text-sm text-gray-500">
-                                            Showing 8 of {optimization.recommendations.length} recommendations
+                                            </thead>
+                                            <tbody className="bg-white divide-y divide-gray-200">
+                                                {optimization.recommendations.map((rec, index) => (
+                                                    <tr key={index} className="hover:bg-gray-50">
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm">
+                                                            <div>
+                                                                <div className="font-medium text-gray-900">
+                                                                    {rec.type === 'inventory_redistribution' ? '📦 Redistribution' : 
+                                                                     rec.type === 'system_optimization' ? '⚡ System Optimization' : 
+                                                                     rec.type || 'Optimization'}
+                                                                </div>
+                                                                <div className="text-xs text-gray-500">
+                                                                    {rec.title || rec.type}
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm">
+                                                            {rec.item_name ? (
+                                                                <div>
+                                                                    <div className="font-medium text-gray-900">{rec.item_name}</div>
+                                                                    <div className="text-xs text-gray-500">{rec.item_id}</div>
+                                                                    {rec.from_location && (
+                                                                        <div className="text-xs text-blue-600">From: {rec.from_location}</div>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-sm text-gray-600">
+                                                                    System-wide optimization
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm">
+                                                            {rec.current_stock !== undefined ? (
+                                                                <div>
+                                                                    <span className={`font-medium ${
+                                                                        rec.current_stock === 0 ? 'text-red-600' : 
+                                                                        rec.current_stock > (rec.minimum_threshold || 50) ? 'text-orange-600' :
+                                                                        'text-gray-900'
+                                                                    }`}>
+                                                                        {rec.current_stock} units
+                                                                    </span>
+                                                                    {rec.minimum_threshold && (
+                                                                        <div className="text-xs text-gray-500">
+                                                                            Min: {rec.minimum_threshold}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-sm text-gray-600">
+                                                                    {rec.total_items_analyzed ? `${rec.total_items_analyzed} items analyzed` : 'N/A'}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm">
+                                                            {rec.recommended_transfer ? (
+                                                                <div>
+                                                                    <span className="font-medium text-blue-600">
+                                                                        Transfer {rec.recommended_transfer} units
+                                                                    </span>
+                                                                    {rec.to_location && (
+                                                                        <div className="text-xs text-gray-500">
+                                                                            To: {rec.to_location}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ) : rec.recommended_actions ? (
+                                                                <div className="space-y-1">
+                                                                    {rec.recommended_actions.slice(0, 2).map((action, i) => (
+                                                                        <div key={i} className="text-xs text-blue-600">
+                                                                            • {action}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-gray-500">No specific action</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm">
+                                                            {rec.potential_cost_savings ? (
+                                                                <div>
+                                                                    <span className="font-medium text-green-600">
+                                                                        {rec.potential_cost_savings}
+                                                                    </span>
+                                                                    {rec.efficiency_gain && (
+                                                                        <div className="text-xs text-gray-500">
+                                                                            +{rec.efficiency_gain} efficiency
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ) : rec.estimated_monthly_savings ? (
+                                                                <span className="font-medium text-green-600">
+                                                                    ${rec.estimated_monthly_savings}/month
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-gray-500">-</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm">
+                                                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                                                rec.urgency === 'High' || rec.urgency === 'Critical' ? 'bg-red-100 text-red-800' :
+                                                                rec.urgency === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                                                                'bg-green-100 text-green-800'
+                                                            }`}>
+                                                                {rec.urgency || 'Low'}
+                                                            </span>
+                                                            {rec.confidence && (
+                                                                <div className="text-xs text-gray-500 mt-1">
+                                                                    {(rec.confidence * 100).toFixed(0)}% confidence
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Data Quality Indicators */}
+                                    {optimization.quality_indicators && (
+                                        <div className="bg-blue-50 p-4 rounded-lg">
+                                            <h3 className="font-semibold text-blue-800 mb-2">📊 Analysis Quality</h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                                <div>
+                                                    <span className="font-medium">Data Source:</span><br/>
+                                                    <span className="text-blue-600">{optimization.data_source || 'Real-time'}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">Method:</span><br/>
+                                                    <span className="text-blue-600">{optimization.optimization_method}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">Validation:</span><br/>
+                                                    <span className="text-green-600">{optimization.quality_indicators.validation_status}</span>
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
