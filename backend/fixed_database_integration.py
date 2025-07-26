@@ -889,7 +889,7 @@ class FixedDatabaseIntegration:
             return {"purchase_orders": [], "data_source": "database"}
     
     async def update_inventory_quantity(self, item_id: str, quantity_change: int, reason: str):
-        """Update inventory quantity in the database"""
+        """Update inventory quantity in the database by updating the WAREHOUSE location"""
         try:
             if not self.is_connected:
                 await self.initialize()
@@ -897,7 +897,7 @@ class FixedDatabaseIntegration:
             async with self.engine.begin() as conn:
                 # Check if the item exists in the inventory_items table
                 check_query = text("""
-                    SELECT item_id, current_stock FROM inventory_items 
+                    SELECT item_id FROM inventory_items 
                     WHERE item_id = :item_id OR name = :item_id
                     LIMIT 1
                 """)
@@ -905,21 +905,36 @@ class FixedDatabaseIntegration:
                 row = result.fetchone()
                 
                 if row:
-                    # Update existing item
-                    new_quantity = max(0, row.current_stock + quantity_change)  # Prevent negative quantities
-                    update_query = text("""
-                        UPDATE inventory_items 
-                        SET current_stock = :new_quantity
-                        WHERE item_id = :item_id
+                    # Update the WAREHOUSE location (default location for general inventory updates)
+                    warehouse_update = text("""
+                        UPDATE item_locations 
+                        SET quantity = GREATEST(0, quantity + :quantity_change),
+                            last_updated = CURRENT_TIMESTAMP
+                        WHERE item_id = :item_id AND location_id = 'WAREHOUSE'
                     """)
-                    await conn.execute(update_query, {
-                        "new_quantity": new_quantity,
+                    
+                    update_result = await conn.execute(warehouse_update, {
+                        "quantity_change": quantity_change,
                         "item_id": row.item_id
                     })
-                    logger.info(f"✅ Updated inventory for {item_id}: {row.current_stock} -> {new_quantity}")
                     
-                    # For now, let's NOT auto-distribute to avoid transaction issues
-                    # Manual sync can be done separately
+                    if update_result.rowcount > 0:
+                        logger.info(f"✅ Updated WAREHOUSE inventory for {item_id} by {quantity_change}")
+                    else:
+                        # If no WAREHOUSE location exists, create it
+                        insert_query = text("""
+                            INSERT INTO item_locations (item_id, location_id, quantity, minimum_threshold, maximum_capacity)
+                            VALUES (:item_id, 'WAREHOUSE', GREATEST(0, :quantity), 10, 1000)
+                            ON CONFLICT (item_id, location_id) DO UPDATE SET
+                                quantity = GREATEST(0, item_locations.quantity + :quantity_change),
+                                last_updated = CURRENT_TIMESTAMP
+                        """)
+                        await conn.execute(insert_query, {
+                            "item_id": row.item_id,
+                            "quantity": quantity_change,
+                            "quantity_change": quantity_change
+                        })
+                        logger.info(f"✅ Created/updated WAREHOUSE location for {item_id} with {quantity_change} units")
                     
                 else:
                     # If item doesn't exist, we might need to create it or log a warning
@@ -930,7 +945,7 @@ class FixedDatabaseIntegration:
             raise
 
     async def sync_inventory_with_locations(self, item_id: str):
-        """Sync inventory_items.current_stock with sum of item_locations.quantity"""
+        """Get total inventory sum from all locations for an item"""
         try:
             if not self.is_connected:
                 await self.initialize()
@@ -946,18 +961,10 @@ class FixedDatabaseIntegration:
                 row = result.fetchone()
                 location_sum = row.location_sum
                 
-                # Update inventory_items table to match location sum
-                update_query = text("""
-                    UPDATE inventory_items 
-                    SET current_stock = :location_sum
-                    WHERE item_id = :item_id
-                """)
-                await conn.execute(update_query, {
-                    "location_sum": location_sum,
-                    "item_id": item_id
-                })
+                # Note: In this schema, inventory_items doesn't have current_stock column.
+                # Total inventory is calculated dynamically from item_locations.
                 
-                logger.info(f"✅ Synced {item_id} inventory: current_stock = {location_sum}")
+                logger.info(f"✅ Calculated total inventory for {item_id}: {location_sum} units across all locations")
                 return location_sum
                 
         except Exception as e:
@@ -992,34 +999,18 @@ class FixedDatabaseIntegration:
                     "quantity_change": quantity_change
                 })
                 
-                # Also update the overall inventory total
-                total_update_query = text("""
-                    UPDATE inventory_items 
-                    SET quantity = quantity + :quantity_change,
-                        last_updated = CURRENT_TIMESTAMP
-                    WHERE item_id = :item_id
-                """)
-                
-                await conn.execute(total_update_query, {
-                    "item_id": item_id,
-                    "quantity_change": quantity_change
-                })
+                # Note: In this schema, total inventory is calculated from item_locations, 
+                # not stored in inventory_items table
                 
                 if result.rowcount > 0:
                     # Log the activity
                     await self.log_activity(
-                        action="direct_location_update",
+                        activity_type="direct_location_update",
                         item_id=item_id,
-                        item_name=item_name,
-                        location=location_name,
+                        item_name=item_name or f"Item {item_id}",
+                        location=location_name or location_id,
                         quantity=abs(quantity_change),
-                        reason=f"Direct location update: {reason}",
-                        priority=1,
-                        metadata={
-                            "target_location": location_id,
-                            "change_type": "increase" if quantity_change > 0 else "decrease",
-                            "user_directed": True
-                        }
+                        reason=f"Direct location update: {reason}"
                     )
                     
                     logger.info(f"✅ Updated {item_name} in {location_name}: {quantity_change:+d} units")

@@ -169,7 +169,7 @@ export const SupplyDataProvider = ({ children }) => {
   };
 
   // Update inventory
-  const updateInventory = async (itemId, quantityChange, reason, location = "General") => {
+  const updateInventory = async (itemId, quantityChange, reason, location = "WAREHOUSE") => {
     try {
       await axios.post(`${API_BASE_URL}/api/v2/inventory/update`, {
         item_id: itemId,
