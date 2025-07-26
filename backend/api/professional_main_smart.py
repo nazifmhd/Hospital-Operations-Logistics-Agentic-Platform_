@@ -6032,6 +6032,93 @@ async def update_inventory(request: InventoryUpdateRequest):
         logging.error(f"Error updating inventory: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/v2/inventory/execute-distribution-plan")
+async def execute_distribution_plan(request: dict):
+    """Execute a specific distribution plan for inventory updates"""
+    try:
+        item_id = request.get('item_id')
+        distribution_plan = request.get('distribution_plan', [])
+        reason = request.get('reason', 'received_stock')
+        
+        logging.info(f"📦 Executing distribution plan for {item_id}")
+        logging.info(f"📋 Plan: {distribution_plan}")
+        
+        if not item_id or not distribution_plan:
+            raise HTTPException(status_code=400, detail="item_id and distribution_plan are required")
+        
+        # Initialize database if needed
+        if not db_integration_instance:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        # Execute each distribution step
+        total_distributed = 0
+        executed_distributions = []
+        
+        for distribution in distribution_plan:
+            location_id = distribution.get('location_id')  # Use location_id
+            location_name = distribution.get('location_name')
+            quantity = distribution.get('quantity', 0)
+            dist_reason = distribution.get('reason', reason)
+            
+            if quantity <= 0 or not location_id:
+                continue
+                
+            try:
+                # Update the specific location
+                await db_integration_instance.update_location_inventory(
+                    item_id, 
+                    location_id,  # Pass location_id, not location_name
+                    quantity, 
+                    dist_reason
+                )
+                
+                total_distributed += quantity
+                executed_distributions.append({
+                    'location': location_name,
+                    'quantity': quantity,
+                    'reason': dist_reason
+                })
+                logging.info(f"✅ Distributed {quantity} units to {location_name}")
+            except Exception as e:
+                logging.warning(f"❌ Failed to distribute to {location_name}: {e}")
+        
+        # Don't update main inventory separately since update_location_inventory does it
+        # if total_distributed > 0:
+        #     await db_integration_instance.update_inventory_quantity(
+        #         item_id, 
+        #         total_distributed, 
+        #         reason
+        #     )
+        #     logging.info(f"✅ Updated main inventory with {total_distributed} units")
+        
+        # Log the activity
+        if db_integration_instance:
+            try:
+                await db_integration_instance.log_activity(
+                    "EXECUTE_DISTRIBUTION_PLAN",
+                    item_id,
+                    f"Item {item_id}",
+                    total_distributed,
+                    f"Executed distribution plan with {len(executed_distributions)} distributions",
+                    "system"
+                )
+            except Exception as e:
+                logging.warning(f"Failed to log activity: {e}")
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": f"Successfully executed distribution plan for {item_id}",
+            "item_id": item_id,
+            "total_distributed": total_distributed,
+            "distributions_executed": len(executed_distributions),
+            "details": executed_distributions,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error executing distribution plan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/v2/inventory/sync/{item_id}")
 async def sync_inventory_with_locations(item_id: str):
     """Sync inventory_items.current_stock with sum of item_locations.quantity"""

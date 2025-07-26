@@ -132,6 +132,35 @@ const ComprehensiveInventoryPage = () => {
     console.warn('⚠️ Inventory Count Mismatches Found:', invalidItems);
   }
 
+  // Execute specific distribution plan
+  const executeDistributionPlan = async (itemId, distributionPlan, reason) => {
+    try {
+      const response = await fetch('/api/v2/inventory/execute-distribution-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          item_id: itemId,
+          distribution_plan: distributionPlan,
+          reason: reason
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to execute distribution plan');
+      }
+
+      const result = await response.json();
+      console.log('✅ Distribution plan executed:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ Execute distribution plan failed:', error);
+      throw error;
+    }
+  };
+
   // Smart stock distribution when receiving orders
   const smartStockDistribution = async (itemId, totalQuantity, reason = 'received_stock') => {
     try {
@@ -347,8 +376,8 @@ const ComprehensiveInventoryPage = () => {
         `\n\nProceed with this distribution?`;
 
       if (window.confirm(confirmMessage)) {
-        // Execute the distribution
-        await updateInventory(itemId, totalQuantity, reason);
+        // Execute the exact distribution plan shown to the user
+        await executeDistributionPlan(itemId, distributionPlan, reason);
         await fetchMultiLocationInventory(); // Refresh the data
         
         // Show success message

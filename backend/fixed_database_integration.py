@@ -992,34 +992,19 @@ class FixedDatabaseIntegration:
                     "quantity_change": quantity_change
                 })
                 
-                # Also update the overall inventory total
-                total_update_query = text("""
-                    UPDATE inventory_items 
-                    SET quantity = quantity + :quantity_change,
-                        last_updated = CURRENT_TIMESTAMP
-                    WHERE item_id = :item_id
-                """)
-                
-                await conn.execute(total_update_query, {
-                    "item_id": item_id,
-                    "quantity_change": quantity_change
-                })
+                # Don't update inventory_items table here - stock is managed through item_locations
+                # The total stock is calculated dynamically from item_locations
                 
                 if result.rowcount > 0:
                     # Log the activity
                     await self.log_activity(
-                        action="direct_location_update",
-                        item_id=item_id,
-                        item_name=item_name,
-                        location=location_name,
-                        quantity=abs(quantity_change),
-                        reason=f"Direct location update: {reason}",
-                        priority=1,
-                        metadata={
-                            "target_location": location_id,
-                            "change_type": "increase" if quantity_change > 0 else "decrease",
-                            "user_directed": True
-                        }
+                        "direct_location_update",  # activity_type
+                        item_id,                   # item_id
+                        item_name,                 # item_name
+                        location_name,             # location
+                        abs(quantity_change),      # quantity
+                        f"Direct location update: {reason}",  # reason
+                        "system"                   # user
                     )
                     
                     logger.info(f"✅ Updated {item_name} in {location_name}: {quantity_change:+d} units")
