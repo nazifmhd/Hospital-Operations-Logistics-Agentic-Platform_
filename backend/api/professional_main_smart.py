@@ -5,6 +5,7 @@ Works with database when available, falls back to agent data when not
 
 import sys
 import os
+import aiohttp
 
 # Add backend directory to path
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -5669,23 +5670,30 @@ async def get_recent_activity():
         # Add Enhanced Supply Agent activities first (most important)
         if db_integration_instance and ENHANCED_AGENT_AVAILABLE:
             try:
-                agent = get_enhanced_supply_agent()
-                agent_activities = await agent.get_recent_activities(5)  # Reduced from 10 to 5
+                # Use the working v3 enhanced agent activities endpoint data
+                async with aiohttp.ClientSession() as session:
+                    async with session.get("http://localhost:8000/api/v3/enhanced-agent/activities") as response:
+                        if response.status == 200:
+                            agent_data = await response.json()
+                            agent_activities = agent_data.get('activities', [])
+                        else:
+                            agent_activities = []
                 
                 # Filter out duplicate reorders for the same item and department
                 seen_items = set()
                 filtered_activities = []
                 
-                for activity in agent_activities:
+                for activity in agent_activities[:5]:  # Take only top 5
+                    # Enhanced mapping to handle the v3 API structure
                     item_name = activity.get('item_name', 'Unknown Item')
-                    department = activity.get('department', 'System')
+                    location = activity.get('location_details', 'System')
                     action_type = activity.get('action_type', 'action')
                     
                     # Create unique key for this activity
-                    unique_key = f"{action_type}_{item_name}_{department}"
+                    unique_key = f"{action_type}_{item_name}_{location}"
                     
-                    # For reorders, only show one per item per department
-                    if action_type == 'reorder':
+                    # For reorders, only show one per item per location
+                    if action_type in ['auto_purchase_order', 'reorder']:
                         if unique_key not in seen_items:
                             seen_items.add(unique_key)
                             filtered_activities.append(activity)
@@ -5694,36 +5702,40 @@ async def get_recent_activity():
                         filtered_activities.append(activity)
                 
                 for activity in filtered_activities:
-                    # Get activity details with fallbacks
+                    # Enhanced activity details extraction with v3 API structure
                     action_type = activity.get('action_type', 'action')
                     item_name = activity.get('item_name', 'Unknown Item')
-                    department = activity.get('department', 'System')
+                    location = activity.get('location_details', 'System')
                     quantity = activity.get('quantity', 0)
                     reason = activity.get('reason', 'Automated action')
                     
-                    # Format action display
-                    if action_type == 'reorder':
-                        action_display = f"🛒 Automated Reorder"
-                    elif action_type == 'inter_transfer':
-                        action_display = f"🔄 Inter-Department Transfer"
+                    # Format action display with enhanced mapping
+                    if action_type == 'auto_purchase_order':
+                        action_display = f"🛒 Automated Purchase Order"
+                    elif action_type == 'auto_transfer':
+                        action_display = f"🔄 Automated Transfer"
                     else:
                         action_display = f"🤖 {action_type.replace('_', ' ').title()}"
                     
                     # Handle different action types
-                    if action_type == 'inter_transfer':
-                        # For transfers, show source and target departments
-                        target_dept = activity.get('target_department', 'Unknown')
-                        location_display = f"{department} → {target_dept}"
-                        detail_display = f"Transferred {quantity} units of {item_name}"
-                        description = f"Inter Transfer: {item_name} - {quantity} units moved from {department} to {target_dept}"
+                    if action_type == 'auto_transfer':
+                        # For transfers, show source and target locations if available
+                        if " → " in location:
+                            location_display = location
+                            detail_display = f"Transferred {quantity} units of {item_name}"
+                            description = f"Auto Transfer: {item_name} - {quantity} units transferred"
+                        else:
+                            location_display = location
+                            detail_display = f"{item_name} ({quantity} units)"
+                            description = f"Auto Transfer: {item_name} - {quantity} units"
                     else:
-                        # For reorders and other actions
-                        location_display = department
+                        # For purchase orders and other actions
+                        location_display = location
                         detail_display = f"{item_name} ({quantity} units)"
-                        description = f"Automated Reorder: {item_name} - {quantity} units ordered for {department}"
+                        description = f"Auto Purchase Order: {item_name} - {quantity} units ordered for {location}"
                     
                     activities.append({
-                        "id": activity.get('activity_id', f"agent-{uuid.uuid4().hex[:8]}"),
+                        "id": f"agent-{uuid.uuid4().hex[:8]}",
                         "type": "automated_supply_action",
                         "action": action_display,
                         "item": item_name,
@@ -5738,9 +5750,16 @@ async def get_recent_activity():
                         "priority": activity.get('priority', 'medium')
                     })
                 
-                logging.info(f"✅ Added {len(agent_activities)} Enhanced Agent activities to recent activity")
+                logging.info(f"✅ Added {len(filtered_activities)} Enhanced Agent activities to recent activity")
             except Exception as e:
                 logging.warning(f"⚠️ Error fetching Enhanced Agent activities: {e}")
+                # Fallback to original method if needed
+                try:
+                    agent = get_enhanced_supply_agent()
+                    agent_activities = await agent.get_recent_activities(3)
+                    logging.info(f"✅ Fallback: Got {len(agent_activities)} activities from direct agent call")
+                except Exception as e2:
+                    logging.warning(f"⚠️ Fallback also failed: {e2}")
         
         # Add Smart Distribution activities from database integration (higher priority)
         if db_integration_instance:
@@ -7214,45 +7233,6 @@ async def submit_llm_feedback(request: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== MISSING FRONTEND ENDPOINTS ====================
-
-@app.get("/api/v2/recent-activity")
-async def get_recent_activity():
-    """Get recent activities for the dashboard"""
-    try:
-        # Get activities from enhanced agent
-        activities = await enhanced_supply_agent_instance.get_recent_activities(limit=20)
-        
-        # Format activities for frontend
-        formatted_activities = []
-        for activity in activities:
-            formatted_activities.append({
-                "id": activity.get("id", str(uuid.uuid4())),
-                "type": activity.get("action_type", "automated_supply_action"),
-                "action": activity.get("action", "Unknown Action"),
-                "item": activity.get("item", "Unknown Item"),
-                "location": activity.get("department", "Unknown Location"),
-                "description": activity.get("action", "Activity description"),
-                "details": activity.get("details", "No details available"),
-                "timestamp": activity.get("timestamp", datetime.now().isoformat()),
-                "user": activity.get("user_id", "system"),
-                "status": activity.get("status", "completed"),
-                "icon": "🤖" if activity.get("user_id") == "autonomous_agent" else "👤"
-            })
-        
-        return JSONResponse(content={
-            "activities": formatted_activities,
-            "count": len(formatted_activities),
-            "timestamp": datetime.now().isoformat()
-        })
-        
-    except Exception as e:
-        logging.error(f"Error getting recent activities: {e}")
-        return JSONResponse(content={
-            "activities": [],
-            "count": 0,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
 
 @app.get("/api/v2/locations")
 async def get_locations():
