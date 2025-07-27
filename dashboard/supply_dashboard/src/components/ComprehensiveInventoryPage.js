@@ -209,7 +209,7 @@ const ComprehensiveInventoryPage = () => {
         'WAREHOUSE': 12
       };
 
-      // Step 1: Identify low stock locations
+      // Step 1: Identify low stock locations (at or below minimum threshold)
       const lowStockLocations = locations.filter(loc => {
         const currentStock = loc.quantity || 0;
         const minStock = loc.minimum_threshold || 5;
@@ -226,40 +226,50 @@ const ComprehensiveInventoryPage = () => {
         return deficitB - deficitA; // Higher deficit first
       });
 
-      // Step 2: Calculate distribution plan
+      // Step 2: Calculate distribution plan with safety buffers above minimum thresholds
       let remainingQuantity = totalQuantity;
       const distributionPlan = [];
 
-      // First, fill low stock locations to their minimum levels
+      // First, fill low stock locations ABOVE their minimum levels with safety buffer
       for (const location of lowStockLocations) {
         if (remainingQuantity <= 0) break;
         
         const currentStock = location.quantity || 0;
         const minStock = location.minimum_threshold || 5;
-        const deficit = minStock - currentStock;
         
-        if (deficit > 0) {
-          const allocatedQuantity = Math.min(deficit, remainingQuantity);
+        // Calculate safety buffer based on location priority (higher priority = larger buffer)
+        const priority = locationPriorities[location.location_id] || 999;
+        const safetyBufferPercent = priority <= 3 ? 0.5 : priority <= 6 ? 0.3 : 0.2; // 50%, 30%, or 20% buffer
+        const safetyBuffer = Math.max(2, Math.ceil(minStock * safetyBufferPercent)); // At least 2 units buffer
+        
+        const targetStock = minStock + safetyBuffer; // Target is minimum + safety buffer
+        const totalNeeded = targetStock - currentStock;
+        
+        if (totalNeeded > 0) {
+          const allocatedQuantity = Math.min(totalNeeded, remainingQuantity);
           distributionPlan.push({
             location_id: location.location_id,
             location_name: location.location_name,
             quantity: allocatedQuantity,
-            reason: 'low_stock_replenishment',
+            reason: `replenishment_to_${targetStock}_units_(min_${minStock}_+_buffer_${safetyBuffer})`,
             priority: 'high'
           });
           remainingQuantity -= allocatedQuantity;
         } else {
-          // Even if no deficit, add some safety stock for borderline cases
-          const safetyStock = Math.min(5, remainingQuantity);
-          if (safetyStock > 0) {
-            distributionPlan.push({
-              location_id: location.location_id,
-              location_name: location.location_name,
-              quantity: safetyStock,
-              reason: 'safety_stock',
-              priority: 'high'
-            });
-            remainingQuantity -= safetyStock;
+          // If already above target, still add minimal safety stock if very close to minimum
+          const deficit = minStock - currentStock;
+          if (deficit >= -2) { // Within 2 units of minimum
+            const safetyStock = Math.min(3, remainingQuantity);
+            if (safetyStock > 0) {
+              distributionPlan.push({
+                location_id: location.location_id,
+                location_name: location.location_name,
+                quantity: safetyStock,
+                reason: 'additional_safety_stock',
+                priority: 'high'
+              });
+              remainingQuantity -= safetyStock;
+            }
           }
         }
       }
