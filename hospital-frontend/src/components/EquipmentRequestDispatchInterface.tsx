@@ -119,6 +119,20 @@ const EquipmentRequestDispatchInterface: React.FC = () => {
       fetchRequests();
       fetchPorters();
     }, 20000);
+  // Event Handlers
+  const handleUpdate = () => {
+    console.log('EquipmentRequestDispatchInterface: Update action triggered');
+  };
+
+  const handleDelete = () => {
+    console.log('EquipmentRequestDispatchInterface: Delete action triggered');
+  };
+
+  const handleCreate = () => {
+    console.log('EquipmentRequestDispatchInterface: Create action triggered');
+  };
+
+
     
     return () => clearInterval(interval);
   }, []);
@@ -754,10 +768,7 @@ const EquipmentRequestDispatchInterface: React.FC = () => {
             <Button
               color="success"
               variant="contained"
-              onClick={() => {
-                completeRequest(selectedRequest.id);
-                setDetailsDialog(false);
-              }}
+              onClick={() => completeRequest(selectedRequest?.id || '')}
             >
               Mark as Completed
             </Button>

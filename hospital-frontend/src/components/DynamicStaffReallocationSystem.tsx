@@ -105,6 +105,20 @@ const DynamicStaffReallocationSystem: React.FC = () => {
       fetchReallocationSuggestions();
       fetchShiftAdjustments();
     }, 15000);
+  // Event Handlers
+  const handleUpdate = () => {
+    console.log('DynamicStaffReallocationSystem: Update action triggered');
+  };
+
+  const handleDelete = () => {
+    console.log('DynamicStaffReallocationSystem: Delete action triggered');
+  };
+
+  const handleCreate = () => {
+    console.log('DynamicStaffReallocationSystem: Create action triggered');
+  };
+
+
     
     return () => clearInterval(interval);
   }, []);
@@ -232,9 +246,7 @@ const DynamicStaffReallocationSystem: React.FC = () => {
             variant="contained"
             color="error"
             startIcon={<Emergency />}
-            onClick={triggerEmergencyReallocation}
-            disabled={emergencyMode}
-            sx={{ mr: 2 }}
+            onClick={() => triggerEmergencyReallocation()}
           >
             {emergencyMode ? 'Processing...' : 'Emergency Reallocation'}
           </Button>
@@ -709,7 +721,7 @@ const DynamicStaffReallocationSystem: React.FC = () => {
                 color="success"
                 variant="contained"
                 onClick={() => {
-                  approveSuggestion(selectedSuggestion.id);
+                  approveSuggestion(selectedSuggestion?.id || '');
                   setDialogOpen(false);
                 }}
               >

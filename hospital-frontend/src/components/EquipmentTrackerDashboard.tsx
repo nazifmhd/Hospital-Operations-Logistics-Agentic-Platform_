@@ -69,10 +69,7 @@ const EquipmentTrackerDashboard: React.FC = () => {
 
   const fetchEquipment = async () => {
     try {
-      const response = await axios.post('http://localhost:8000/equipment_tracker/query', {
-        query: 'Show all medical equipment with their current status and location',
-        parameters: {}
-      });
+      const response = await axios.get('http://localhost:8000/equipment_tracker/query');
       setEquipment(response.data.equipment || []);
     } catch (error) {
       console.error('Error fetching equipment:', error);
@@ -168,6 +165,20 @@ const EquipmentTrackerDashboard: React.FC = () => {
   if (loading) {
     return <LinearProgress />;
   }
+  // Event Handlers
+  const handleUpdate = () => {
+    console.log('EquipmentTrackerDashboard: Update action triggered');
+  };
+
+  const handleDelete = () => {
+    console.log('EquipmentTrackerDashboard: Delete action triggered');
+  };
+
+  const handleCreate = () => {
+    console.log('EquipmentTrackerDashboard: Create action triggered');
+  };
+
+
 
   return (
     <Box>

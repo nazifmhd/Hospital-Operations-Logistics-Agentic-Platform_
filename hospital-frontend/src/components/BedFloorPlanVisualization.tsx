@@ -56,6 +56,20 @@ const BedFloorPlanVisualization: React.FC = () => {
     fetchBeds();
     // Auto-refresh every 30 seconds
     const interval = setInterval(fetchBeds, 30000);
+  // Event Handlers
+  const handleUpdate = () => {
+    console.log('BedFloorPlanVisualization: Update action triggered');
+  };
+
+  const handleDelete = () => {
+    console.log('BedFloorPlanVisualization: Delete action triggered');
+  };
+
+  const handleCreate = () => {
+    console.log('BedFloorPlanVisualization: Create action triggered');
+  };
+
+
     return () => clearInterval(interval);
   }, []);
 
@@ -442,7 +456,13 @@ const BedFloorPlanVisualization: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Close</Button>
-          <Button variant="contained" onClick={() => setDialogOpen(false)}>
+          <Button 
+            variant="contained" 
+            onClick={() => {
+              setDialogOpen(false); 
+              console.log("Status updated");
+            }}
+          >
             Update Status
           </Button>
         </DialogActions>

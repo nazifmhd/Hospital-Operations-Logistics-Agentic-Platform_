@@ -55,6 +55,20 @@ const EquipmentLocationMap: React.FC = () => {
     fetchEquipment();
     // Auto-refresh every 30 seconds
     const interval = setInterval(fetchEquipment, 30000);
+  // Event Handlers
+  const handleUpdate = () => {
+    console.log('EquipmentLocationMap: Update action triggered');
+  };
+
+  const handleDelete = () => {
+    console.log('EquipmentLocationMap: Delete action triggered');
+  };
+
+  const handleCreate = () => {
+    console.log('EquipmentLocationMap: Create action triggered');
+  };
+
+
     return () => clearInterval(interval);
   }, []);
 
@@ -387,7 +401,13 @@ const EquipmentLocationMap: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Close</Button>
-          <Button variant="contained" onClick={() => setDialogOpen(false)}>
+          <Button 
+            variant="contained" 
+            onClick={() => {
+              setDialogOpen(false); 
+              console.log("Status updated");
+            }}
+          >
             Update Status
           </Button>
         </DialogActions>

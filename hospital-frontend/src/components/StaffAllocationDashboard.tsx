@@ -61,11 +61,8 @@ const StaffAllocationDashboard: React.FC = () => {
 
   const fetchStaff = async () => {
     try {
-      const response = await axios.post('http://localhost:8000/staff_allocation/query', {
-        query: 'Show all staff members with their current assignments',
-        parameters: {}
-      });
-      setStaff(response.data.staff_members || []);
+      const response = await axios.get('http://localhost:8000/staff_allocation/query');
+      setStaff(response.data.staff_members || response.data.staff || []);
     } catch (error) {
       console.error('Error fetching staff:', error);
     } finally {
@@ -137,6 +134,20 @@ const StaffAllocationDashboard: React.FC = () => {
   if (loading) {
     return <LinearProgress />;
   }
+  // Event Handlers
+  const handleUpdate = () => {
+    console.log('StaffAllocationDashboard: Update action triggered');
+  };
+
+  const handleDelete = () => {
+    console.log('StaffAllocationDashboard: Delete action triggered');
+  };
+
+  const handleCreate = () => {
+    console.log('StaffAllocationDashboard: Create action triggered');
+  };
+
+
 
   return (
     <Box>

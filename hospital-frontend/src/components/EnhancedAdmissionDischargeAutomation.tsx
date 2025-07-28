@@ -153,6 +153,19 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
     notes: '',
   });
 
+  // Event Handlers
+  const handleUpdate = () => {
+    console.log('EnhancedAdmissionDischargeAutomation: Update action triggered');
+  };
+
+  const handleDelete = () => {
+    console.log('EnhancedAdmissionDischargeAutomation: Delete action triggered');
+  };
+
+  const handleCreate = () => {
+    console.log('EnhancedAdmissionDischargeAutomation: Create action triggered');
+  };
+
   useEffect(() => {
     fetchPatientsData();
     fetchTasksData();
@@ -758,6 +771,7 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
                                   variant="contained"
                                   color="success"
                                   startIcon={<Print />}
+                                  onClick={() => console.log("Print Docs clicked")}
                                 >
                                   Print Docs
                                 </Button>
@@ -931,9 +945,7 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
                           />
                         </TableCell>
                         <TableCell>
-                          <Button size="small" variant="outlined">
-                            Edit
-                          </Button>
+                          <Button size="small" variant="outlined" onClick={() => console.log("Edit clicked")}>Edit</Button>
                         </TableCell>
                       </TableRow>
                     ))}

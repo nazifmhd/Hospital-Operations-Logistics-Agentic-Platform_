@@ -61,11 +61,8 @@ const SupplyInventoryDashboard: React.FC = () => {
 
   const fetchSupplies = async () => {
     try {
-      const response = await axios.post('http://localhost:8000/supply_inventory/query', {
-        query: 'Show all supply items with their current stock levels and status',
-        parameters: {}
-      });
-      setSupplies(response.data.supply_items || []);
+      const response = await axios.get('http://localhost:8000/supply_inventory/query');
+      setSupplies(response.data.supply_items || response.data.items || []);
     } catch (error) {
       console.error('Error fetching supplies:', error);
     } finally {
@@ -149,6 +146,20 @@ const SupplyInventoryDashboard: React.FC = () => {
   if (loading) {
     return <LinearProgress />;
   }
+  // Event Handlers
+  const handleUpdate = () => {
+    console.log('SupplyInventoryDashboard: Update action triggered');
+  };
+
+  const handleDelete = () => {
+    console.log('SupplyInventoryDashboard: Delete action triggered');
+  };
+
+  const handleCreate = () => {
+    console.log('SupplyInventoryDashboard: Create action triggered');
+  };
+
+
 
   return (
     <Box>

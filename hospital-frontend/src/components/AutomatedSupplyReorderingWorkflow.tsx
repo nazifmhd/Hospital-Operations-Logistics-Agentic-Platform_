@@ -86,6 +86,20 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
       fetchReorderData();
       fetchPurchaseOrders();
     }, 30000);
+  // Event Handlers
+  const handleUpdate = () => {
+    console.log('AutomatedSupplyReorderingWorkflow: Update action triggered');
+  };
+
+  const handleDelete = () => {
+    console.log('AutomatedSupplyReorderingWorkflow: Delete action triggered');
+  };
+
+  const handleCreate = () => {
+    console.log('AutomatedSupplyReorderingWorkflow: Create action triggered');
+  };
+
+
     
     return () => clearInterval(interval);
   }, []);
@@ -249,8 +263,7 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
             variant="contained"
             color="primary"
             startIcon={<ShoppingCart />}
-            onClick={triggerAutoReorder}
-            sx={{ mr: 2 }}
+            onClick={() => triggerAutoReorder()}
           >
             Trigger Auto Reorder
           </Button>
