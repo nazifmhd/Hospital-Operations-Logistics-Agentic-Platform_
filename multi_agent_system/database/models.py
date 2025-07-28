@@ -281,6 +281,30 @@ class EquipmentMaintenance(Base):
     equipment = relationship("MedicalEquipment", back_populates="maintenance_records")
     technician = relationship("StaffMember", foreign_keys=[performed_by])
 
+class EquipmentRequest(Base):
+    """Equipment request and dispatch tracking"""
+    __tablename__ = 'equipment_requests'
+    
+    id = Column(String(50), primary_key=True)
+    requester_name = Column(String(100), nullable=False)
+    requester_department_id = Column(String(50), ForeignKey('departments.id'))
+    requester_location = Column(String(100))
+    equipment_type = Column(String(100), nullable=False)
+    assigned_equipment_id = Column(String(50), ForeignKey('medical_equipment.id'))
+    priority = Column(String(20), default='medium')  # low, medium, high, urgent
+    reason = Column(Text)
+    status = Column(String(20), default='pending')  # pending, assigned, dispatched, delivered, completed, cancelled
+    assigned_porter_id = Column(String(50), ForeignKey('staff_members.id'))
+    estimated_delivery_time = Column(String(50))
+    notes = Column(Text)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    requester_department = relationship("Department", foreign_keys=[requester_department_id])
+    assigned_equipment = relationship("MedicalEquipment", foreign_keys=[assigned_equipment_id])
+    assigned_porter = relationship("StaffMember", foreign_keys=[assigned_porter_id])
+
 class StaffMember(Base):
     """Staff member information and tracking"""
     __tablename__ = 'staff_members'

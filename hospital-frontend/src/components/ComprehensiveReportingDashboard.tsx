@@ -69,10 +69,7 @@ const ComprehensiveReportingDashboard: React.FC = () => {
   const fetchCapacityData = async () => {
     try {
       setError(null);
-      const response = await axios.post('http://localhost:8000/analytics/capacity_utilization', {
-        query: 'Generate comprehensive capacity utilization report',
-        parameters: { include_trends: true, include_forecasts: true }
-      });
+      const response = await axios.get('http://localhost:8000/api/v2/analytics/capacity-utilization');
       setCapacityData(response.data);
     } catch (error) {
       console.error('Error fetching capacity data:', error);
@@ -189,7 +186,7 @@ const ComprehensiveReportingDashboard: React.FC = () => {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={capacityData?.bed_utilization || []}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="department" />
+                <XAxis dataKey="department_name" />
                 <YAxis />
                 <Tooltip />
                 <Legend />
@@ -322,13 +319,12 @@ const ComprehensiveReportingDashboard: React.FC = () => {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={capacityData?.staff_utilization || []}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="department" />
+                <XAxis dataKey="department_name" />
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="active_staff" fill="#82ca9d" name="Active" />
-                <Bar dataKey="on_break" fill="#ffc658" name="On Break" />
-                <Bar dataKey="off_duty" fill="#ff7c7c" name="Off Duty" />
+                <Bar dataKey="active_staff" fill="#82ca9d" name="Active Staff" />
+                <Bar dataKey="total_staff" fill="#8884d8" name="Total Staff" />
               </BarChart>
             </ResponsiveContainer>
           </Box>

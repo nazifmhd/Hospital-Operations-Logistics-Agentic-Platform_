@@ -413,14 +413,14 @@ const EquipmentRequestDispatchInterface: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={request.priority.toUpperCase()}
+                          label={(request.priority || 'unknown').toUpperCase()}
                           color={getPriorityColor(request.priority)}
                           size="small"
                         />
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={request.status.replace('_', ' ').toUpperCase()}
+                          label={(request.status || 'unknown').replace('_', ' ').toUpperCase()}
                           color={getStatusColor(request.status)}
                           size="small"
                         />
@@ -506,39 +506,45 @@ const EquipmentRequestDispatchInterface: React.FC = () => {
           <Typography variant="h6" gutterBottom>
             Available Equipment for Quick Assignment
           </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-            {availableEquipment.slice(0, 8).map((item) => (
-              <Card key={item.id} variant="outlined" sx={{ minWidth: 250 }}>
-                <CardContent sx={{ p: 2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <MedicalServices sx={{ mr: 1, color: 'primary.main' }} />
-                    <Typography variant="body2" fontWeight="bold">
-                      {item.name}
+          {availableEquipment.length === 0 ? (
+            <Alert severity="info">
+              No available equipment found in the database at this time.
+            </Alert>
+          ) : (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+              {availableEquipment.slice(0, 8).map((item) => (
+                <Card key={item.id} variant="outlined" sx={{ minWidth: 250 }}>
+                  <CardContent sx={{ p: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      <MedicalServices sx={{ mr: 1, color: 'primary.main' }} />
+                      <Typography variant="body2" fontWeight="bold">
+                        {item.name}
+                      </Typography>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      {item.equipment_type} • {item.manufacturer}
                     </Typography>
-                  </Box>
-                  <Typography variant="caption" color="text.secondary" display="block">
-                    {item.equipment_type} • {item.manufacturer}
-                  </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                    <LocationOn sx={{ fontSize: 16, mr: 0.5, color: 'text.secondary' }} />
-                    <Typography variant="caption">
-                      {item.location}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-                    <Chip
-                      label={item.status.toUpperCase()}
-                      color="success"
-                      size="small"
-                    />
-                    <Typography variant="caption" color="text.secondary">
-                      {item.distance_from_requester}m away
-                    </Typography>
-                  </Box>
-                </CardContent>
-              </Card>
-            ))}
-          </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                      <LocationOn sx={{ fontSize: 16, mr: 0.5, color: 'text.secondary' }} />
+                      <Typography variant="caption">
+                        {item.location}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                      <Chip
+                        label={(item.status || 'unknown').toUpperCase()}
+                        color="success"
+                        size="small"
+                      />
+                      <Typography variant="caption" color="text.secondary">
+                        {item.distance_from_requester || 0}m away
+                      </Typography>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
+          )}
         </CardContent>
       </Card>
 
@@ -548,20 +554,25 @@ const EquipmentRequestDispatchInterface: React.FC = () => {
           <Typography variant="h6" gutterBottom>
             Porter Status & Availability
           </Typography>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Porter</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Current Location</TableCell>
-                  <TableCell align="right">Active Requests</TableCell>
-                  <TableCell>Availability</TableCell>
-                  <TableCell>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {porters.map((porter) => (
+          {porters.length === 0 ? (
+            <Alert severity="info">
+              No porters found in the database at this time.
+            </Alert>
+          ) : (
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Porter</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Current Location</TableCell>
+                    <TableCell align="right">Active Requests</TableCell>
+                    <TableCell>Availability</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {porters.map((porter) => (
                   <TableRow key={porter.id}>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -575,14 +586,14 @@ const EquipmentRequestDispatchInterface: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={porter.status.replace('_', ' ').toUpperCase()}
+                        label={(porter.status || 'unknown').replace('_', ' ').toUpperCase()}
                         color={porter.status === 'available' ? 'success' : 'warning'}
                         size="small"
                       />
                     </TableCell>
-                    <TableCell>{porter.current_location}</TableCell>
-                    <TableCell align="right">{porter.active_requests}</TableCell>
-                    <TableCell>{porter.estimated_availability}</TableCell>
+                    <TableCell>{porter.current_location || 'Unknown'}</TableCell>
+                    <TableCell align="right">{porter.active_requests || 0}</TableCell>
+                    <TableCell>{porter.estimated_availability || 'Unknown'}</TableCell>
                     <TableCell>
                       {porter.status === 'available' && (
                         <Tooltip title="Assign to Request">
@@ -597,6 +608,7 @@ const EquipmentRequestDispatchInterface: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
+          )}
         </CardContent>
       </Card>
 

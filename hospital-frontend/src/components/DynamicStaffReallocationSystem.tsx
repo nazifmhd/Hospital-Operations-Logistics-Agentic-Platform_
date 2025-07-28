@@ -112,7 +112,7 @@ const DynamicStaffReallocationSystem: React.FC = () => {
   const fetchStaffData = async () => {
     try {
       const response = await axios.get('http://localhost:8000/staff_allocation/real_time_status');
-      setStaffMembers(response.data.staff_members || []);
+      setStaffMembers(response.data.staff || []);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching staff data:', error);
@@ -218,8 +218,8 @@ const DynamicStaffReallocationSystem: React.FC = () => {
   }
 
   const criticalSuggestions = reallocationSuggestions.filter(s => s.priority === 'critical');
-  const overloadedStaff = staffMembers.filter(s => s.workload_score >= 85);
-  const availableStaff = staffMembers.filter(s => s.workload_score < 50 && s.status === 'active');
+  const overloadedStaff = staffMembers.filter(s => (s.workload_score || 0) >= 85);
+  const availableStaff = staffMembers.filter(s => (s.workload_score || 0) < 50 && s.status === 'active');
 
   return (
     <Box sx={{ p: 3 }}>
@@ -348,7 +348,7 @@ const DynamicStaffReallocationSystem: React.FC = () => {
                   <TableRow key={staff.id}>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Avatar sx={{ mr: 2, bgcolor: getWorkloadColor(staff.workload_score) }}>
+                        <Avatar sx={{ mr: 2, bgcolor: getWorkloadColor(staff.workload_score || 0) }}>
                           <Person />
                         </Avatar>
                         <Typography variant="body2" fontWeight="bold">
@@ -359,24 +359,24 @@ const DynamicStaffReallocationSystem: React.FC = () => {
                     <TableCell>{staff.department_name}</TableCell>
                     <TableCell>{staff.role}</TableCell>
                     <TableCell align="right">
-                      {staff.current_patients}/{staff.max_patients}
+                      {staff.current_patients || 0}/{staff.max_patients || 0}
                     </TableCell>
                     <TableCell align="right">
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
                         <LinearProgress
                           variant="determinate"
-                          value={staff.workload_score}
-                          color={getWorkloadColor(staff.workload_score)}
+                          value={staff.workload_score || 0}
+                          color={getWorkloadColor(staff.workload_score || 0)}
                           sx={{ width: 100, mr: 1 }}
                         />
                         <Typography variant="body2">
-                          {staff.workload_score}%
+                          {staff.workload_score || 0}%
                         </Typography>
                       </Box>
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={staff.status.replace('_', ' ').toUpperCase()}
+                        label={(staff.status || 'unknown').replace('_', ' ').toUpperCase()}
                         color={staff.status === 'active' ? 'success' : 'warning'}
                         size="small"
                       />
@@ -388,17 +388,17 @@ const DynamicStaffReallocationSystem: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {staff.specialties.slice(0, 2).map((specialty) => (
+                        {(staff.specialties || []).slice(0, 2).map((specialty) => (
                           <Chip
                             key={specialty}
-                            label={specialty}
+                            label={specialty || 'Unknown'}
                             size="small"
                             variant="outlined"
                           />
                         ))}
-                        {staff.specialties.length > 2 && (
+                        {(staff.specialties || []).length > 2 && (
                           <Chip
-                            label={`+${staff.specialties.length - 2}`}
+                            label={`+${(staff.specialties || []).length - 2}`}
                             size="small"
                             variant="outlined"
                           />
@@ -458,7 +458,7 @@ const DynamicStaffReallocationSystem: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={suggestion.type.replace('_', ' ').toUpperCase()}
+                          label={(suggestion.type || 'unknown').replace('_', ' ').toUpperCase()}
                           size="small"
                           variant="outlined"
                         />
@@ -483,14 +483,14 @@ const DynamicStaffReallocationSystem: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={suggestion.priority.toUpperCase()}
+                          label={(suggestion.priority || 'unknown').toUpperCase()}
                           color={getPriorityColor(suggestion.priority)}
                           size="small"
                         />
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={suggestion.status.toUpperCase()}
+                          label={(suggestion.status || 'unknown').toUpperCase()}
                           color={getStatusColor(suggestion.status)}
                           size="small"
                         />
@@ -590,7 +590,7 @@ const DynamicStaffReallocationSystem: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={adjustment.adjustment_type.replace('_', ' ').toUpperCase()}
+                          label={(adjustment.adjustment_type || 'unknown').replace('_', ' ').toUpperCase()}
                           size="small"
                           variant="outlined"
                         />
@@ -610,7 +610,7 @@ const DynamicStaffReallocationSystem: React.FC = () => {
                       <TableCell>{adjustment.impact}</TableCell>
                       <TableCell>
                         <Chip
-                          label={adjustment.status.toUpperCase()}
+                          label={(adjustment.status || 'unknown').toUpperCase()}
                           color={getStatusColor(adjustment.status)}
                           size="small"
                         />
@@ -662,8 +662,8 @@ const DynamicStaffReallocationSystem: React.FC = () => {
               <Box sx={{ mb: 3 }}>
                 <Typography><strong>Name:</strong> {selectedSuggestion.staff_member.name}</Typography>
                 <Typography><strong>Role:</strong> {selectedSuggestion.staff_member.role}</Typography>
-                <Typography><strong>Current Workload:</strong> {selectedSuggestion.staff_member.workload_score}%</Typography>
-                <Typography><strong>Specialties:</strong> {selectedSuggestion.staff_member.specialties.join(', ')}</Typography>
+                <Typography><strong>Current Workload:</strong> {selectedSuggestion.staff_member.workload_score || 0}%</Typography>
+                <Typography><strong>Specialties:</strong> {(selectedSuggestion.staff_member.specialties || []).join(', ') || 'None'}</Typography>
               </Box>
 
               <Divider sx={{ my: 2 }} />

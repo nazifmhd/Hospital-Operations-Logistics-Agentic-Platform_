@@ -69,10 +69,17 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [autoReorderEnabled, setAutoReorderEnabled] = useState(true);
+  
+  // Supplier selection state
+  const [suppliers, setSuppliers] = useState<Array<{id: string, name: string, contact_person: string}>>([]);
+  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
+  const [selectedReorderItem, setSelectedReorderItem] = useState<AutoReorderItem | null>(null);
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
 
   useEffect(() => {
     fetchReorderData();
     fetchPurchaseOrders();
+    fetchSuppliers();
     
     // Auto-refresh every 30 seconds
     const interval = setInterval(() => {
@@ -86,7 +93,7 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
   const fetchReorderData = async () => {
     try {
       const response = await axios.get('http://localhost:8000/supply_inventory/auto_reorder_status');
-      setReorderItems(response.data.reorder_items || []);
+      setReorderItems(response.data.auto_reorders || []);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching reorder data:', error);
@@ -100,6 +107,15 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
       setPurchaseOrders(response.data.purchase_orders || []);
     } catch (error) {
       console.error('Error fetching purchase orders:', error);
+    }
+  };
+
+  const fetchSuppliers = async () => {
+    try {
+      const response = await axios.get('http://localhost:8000/supply_inventory/suppliers');
+      setSuppliers(response.data.suppliers || []);
+    } catch (error) {
+      console.error('Error fetching suppliers:', error);
     }
   };
 
@@ -128,6 +144,46 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
       fetchPurchaseOrders();
     } catch (error) {
       console.error('Error rejecting purchase order:', error);
+    }
+  };
+
+  const approveReorderItem = async (itemId: string) => {
+    // Find the item to approve
+    const item = reorderItems.find(r => r.id === itemId);
+    if (!item) {
+      console.error('Reorder item not found');
+      return;
+    }
+    
+    // Set the selected item and open supplier selection dialog
+    setSelectedReorderItem(item);
+    setSelectedSupplierId('');
+    setSupplierDialogOpen(true);
+  };
+
+  const confirmApproveWithSupplier = async () => {
+    if (!selectedReorderItem || !selectedSupplierId) {
+      console.error('Missing reorder item or supplier selection');
+      return;
+    }
+
+    try {
+      const response = await axios.post(
+        `http://localhost:8000/supply_inventory/approve_reorder/${selectedReorderItem.id}`,
+        { supplier_id: selectedSupplierId }
+      );
+      console.log('Reorder approved:', response.data);
+      
+      // Close dialog and refresh data
+      setSupplierDialogOpen(false);
+      setSelectedReorderItem(null);
+      setSelectedSupplierId('');
+      
+      // Refresh both auto reorder status and purchase orders
+      fetchReorderData();
+      fetchPurchaseOrders();
+    } catch (error) {
+      console.error('Error approving reorder item:', error);
     }
   };
 
@@ -335,7 +391,7 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
                             size="small"
                             variant="outlined"
                             color="primary"
-                            onClick={() => {/* Approve individual item */}}
+                            onClick={() => approveReorderItem(item.id)}
                           >
                             Approve
                           </Button>
@@ -534,6 +590,61 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
               </Button>
             </>
           )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Supplier Selection Dialog */}
+      <Dialog 
+        open={supplierDialogOpen} 
+        onClose={() => setSupplierDialogOpen(false)} 
+        maxWidth="sm" 
+        fullWidth
+      >
+        <DialogTitle>
+          Select Supplier for {selectedReorderItem?.supply_name}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Choose a supplier to process this reorder:
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {suppliers.map((supplier) => (
+              <Paper
+                key={supplier.id}
+                sx={{
+                  p: 2,
+                  cursor: 'pointer',
+                  border: selectedSupplierId === supplier.id ? '2px solid #1976d2' : '1px solid #e0e0e0',
+                  backgroundColor: selectedSupplierId === supplier.id ? '#f3f7ff' : 'white',
+                  '&:hover': {
+                    backgroundColor: '#f5f5f5'
+                  }
+                }}
+                onClick={() => setSelectedSupplierId(supplier.id)}
+              >
+                <Typography variant="subtitle1" fontWeight="bold">
+                  {supplier.name}
+                </Typography>
+                {supplier.contact_person && (
+                  <Typography variant="body2" color="text.secondary">
+                    Contact: {supplier.contact_person}
+                  </Typography>
+                )}
+              </Paper>
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSupplierDialogOpen(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={confirmApproveWithSupplier}
+            variant="contained"
+            disabled={!selectedSupplierId}
+          >
+            Approve with Selected Supplier
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
