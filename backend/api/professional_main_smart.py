@@ -6051,6 +6051,57 @@ async def update_inventory(request: InventoryUpdateRequest):
         logging.error(f"Error updating inventory: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/v2/inventory/trigger-immediate-reorder")
+async def trigger_immediate_reorder(request: dict):
+    """Trigger immediate autonomous reorder check for specific items/locations"""
+    try:
+        item_id = request.get('item_id')
+        location_id = request.get('location_id')
+        trigger_type = request.get('trigger_type', 'manual_trigger')
+        
+        logging.info(f"⚡ Manual immediate reorder trigger: item_id={item_id}, location_id={location_id}")
+        
+        # Import the trigger function dynamically
+        if AUTONOMOUS_MANAGER_AVAILABLE:
+            try:
+                from autonomous_supply_manager import trigger_immediate_reorder_check
+                
+                # Trigger the immediate check
+                triggered = await trigger_immediate_reorder_check(item_id, location_id, trigger_type)
+                
+                if triggered:
+                    return {
+                        "success": True,
+                        "message": f"Immediate reorder check triggered for item {item_id} in location {location_id}",
+                        "trigger_type": trigger_type,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "message": "Autonomous manager not available for immediate trigger",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+            except ImportError as e:
+                logging.warning(f"⚠️ Could not import autonomous trigger: {e}")
+                return {
+                    "success": False,
+                    "message": "Autonomous reorder system not available",
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
+        else:
+            return {
+                "success": False,
+                "message": "Autonomous manager not enabled",
+                "timestamp": datetime.now().isoformat()
+            }
+            
+    except Exception as e:
+        logging.error(f"❌ Error triggering immediate reorder: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/v2/inventory/execute-distribution-plan")
 async def execute_distribution_plan(request: dict):
     """Execute a specific distribution plan for inventory updates"""

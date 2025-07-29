@@ -29,21 +29,133 @@ class AutonomousSupplyManager:
         self.db_integration = db_integration
         self.enhanced_agent = enhanced_agent
         self.is_running = False
-        self.check_interval = 300  # Check every 5 minutes
+        self.check_interval = 30  # Check every 30 seconds for immediate response
+        self.immediate_check_interval = 5  # For immediate triggers
         self.pending_approvals = []
+        self.last_inventory_check = {}  # Track inventory changes
+        self.event_queue = asyncio.Queue()  # Queue for immediate processing
         
     async def start_monitoring(self):
-        """Start the autonomous monitoring loop"""
+        """Start the autonomous monitoring loop with immediate event processing"""
         self.is_running = True
         logger.info("🤖 Starting Autonomous Supply Management System...")
         
+        # Start both regular monitoring and immediate event processing
+        regular_monitoring = asyncio.create_task(self._regular_monitoring_loop())
+        event_processing = asyncio.create_task(self._immediate_event_processor())
+        
+        try:
+            await asyncio.gather(regular_monitoring, event_processing)
+        except Exception as e:
+            logger.error(f"❌ Error in autonomous monitoring: {e}")
+            self.is_running = False
+    
+    async def _regular_monitoring_loop(self):
+        """Regular monitoring loop - runs every 30 seconds"""
         while self.is_running:
             try:
                 await self.check_and_process_inventory()
                 await asyncio.sleep(self.check_interval)
             except Exception as e:
-                logger.error(f"❌ Error in autonomous monitoring: {e}")
+                logger.error(f"❌ Error in regular monitoring: {e}")
                 await asyncio.sleep(60)  # Wait 1 minute before retrying
+    
+    async def _immediate_event_processor(self):
+        """Process immediate events from the queue"""
+        while self.is_running:
+            try:
+                # Wait for events with timeout to check if still running
+                try:
+                    event = await asyncio.wait_for(self.event_queue.get(), timeout=5.0)
+                    logger.info(f"🚨 Processing immediate event: {event.get('type', 'unknown')}")
+                    await self.process_immediate_event(event)
+                except asyncio.TimeoutError:
+                    # No events, continue loop
+                    continue
+            except Exception as e:
+                logger.error(f"❌ Error in event processing: {e}")
+                await asyncio.sleep(1)
+    
+    async def trigger_immediate_check(self, item_id=None, location_id=None, trigger_type="inventory_change"):
+        """Trigger an immediate inventory check for specific items or locations"""
+        event = {
+            "type": trigger_type,
+            "item_id": item_id,
+            "location_id": location_id,
+            "timestamp": datetime.now().isoformat(),
+            "priority": "immediate"
+        }
+        await self.event_queue.put(event)
+        logger.info(f"⚡ Immediate check triggered for {trigger_type}: item_id={item_id}, location_id={location_id}")
+    
+    async def process_immediate_event(self, event):
+        """Process an immediate event (inventory change, alert, etc.)"""
+        try:
+            event_type = event.get("type")
+            item_id = event.get("item_id")
+            location_id = event.get("location_id")
+            
+            if event_type == "inventory_change":
+                # Process specific item/location immediately
+                if item_id and location_id:
+                    await self.check_specific_item(item_id, location_id)
+                else:
+                    # Fallback to full check
+                    await self.check_and_process_inventory()
+                    
+            elif event_type == "low_stock_alert":
+                # Immediate response to low stock alert
+                if item_id and location_id:
+                    await self.handle_immediate_low_stock(item_id, location_id)
+                    
+            elif event_type == "critical_alert":
+                # Emergency response to critical alerts
+                if item_id and location_id:
+                    await self.handle_emergency_response(item_id, location_id)
+                    
+        except Exception as e:
+            logger.error(f"❌ Error processing immediate event: {e}")
+    
+    async def check_specific_item(self, item_id, location_id):
+        """Check and process a specific item at a specific location"""
+        try:
+            # Get specific item data
+            inventory_data = await self.db_integration.get_inventory_data()
+            items = inventory_data.get('items', [])
+            
+            # Find the specific item
+            target_item = None
+            for item in items:
+                if (item.get('item_id') == item_id and 
+                    item.get('location_id') == location_id):
+                    target_item = item
+                    break
+            
+            if target_item:
+                current_stock = target_item.get('current_stock', 0)
+                minimum_stock = target_item.get('minimum_stock', 0)
+                
+                if current_stock <= minimum_stock:
+                    priority = "critical" if current_stock <= (minimum_stock * 0.5) else "normal"
+                    logger.info(f"🚨 Immediate processing: {target_item.get('name')} in {location_id} - {priority} priority")
+                    await self.process_low_stock_item(target_item, priority=priority)
+                else:
+                    logger.info(f"✅ Item {item_id} in {location_id} stock levels are adequate")
+            else:
+                logger.warning(f"⚠️ Item {item_id} not found in location {location_id}")
+                
+        except Exception as e:
+            logger.error(f"❌ Error checking specific item: {e}")
+    
+    async def handle_immediate_low_stock(self, item_id, location_id):
+        """Handle immediate low stock alert"""
+        logger.info(f"🚨 IMMEDIATE LOW STOCK RESPONSE: item_id={item_id}, location_id={location_id}")
+        await self.check_specific_item(item_id, location_id)
+    
+    async def handle_emergency_response(self, item_id, location_id):
+        """Handle emergency critical stock alert"""
+        logger.info(f"🆘 EMERGENCY RESPONSE: Critical stock for item_id={item_id}, location_id={location_id}")
+        await self.check_specific_item(item_id, location_id)
     
     def stop_monitoring(self):
         """Stop the autonomous monitoring"""
@@ -913,3 +1025,30 @@ def initialize_autonomous_manager(db_integration, enhanced_agent):
     global autonomous_manager
     autonomous_manager = AutonomousSupplyManager(db_integration, enhanced_agent)
     return autonomous_manager
+
+async def trigger_immediate_reorder_check(item_id=None, location_id=None, trigger_type="inventory_change"):
+    """
+    Trigger immediate autonomous reorder check - call this when inventory changes
+    This provides instant response instead of waiting for the regular monitoring cycle
+    """
+    global autonomous_manager
+    if autonomous_manager and autonomous_manager.is_running:
+        await autonomous_manager.trigger_immediate_check(item_id, location_id, trigger_type)
+        return True
+    else:
+        logger.warning("⚠️ Autonomous manager not available for immediate trigger")
+        return False
+
+async def trigger_low_stock_alert_response(item_id, location_id):
+    """
+    Trigger immediate response to low stock alerts
+    Call this when low stock alerts are created
+    """
+    return await trigger_immediate_reorder_check(item_id, location_id, "low_stock_alert")
+
+async def trigger_critical_stock_response(item_id, location_id):
+    """
+    Trigger emergency response to critical stock situations
+    Call this when critical alerts are created
+    """
+    return await trigger_immediate_reorder_check(item_id, location_id, "critical_alert")

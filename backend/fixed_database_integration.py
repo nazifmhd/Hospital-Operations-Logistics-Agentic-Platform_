@@ -918,6 +918,24 @@ class FixedDatabaseIntegration:
                     })
                     logger.info(f"✅ Updated inventory for {item_id}: {row.current_stock} -> {new_quantity}")
                     
+                    # ⚡ IMMEDIATE AUTONOMOUS REORDER TRIGGER ⚡
+                    # Check if this update created a low stock situation and trigger immediate response
+                    try:
+                        # Check current stock level against minimum
+                        minimum_stock = getattr(row, 'minimum_stock', 0) if hasattr(row, 'minimum_stock') else 0
+                        if new_quantity <= minimum_stock:
+                            logger.info(f"🚨 Low stock detected after update - triggering immediate reorder check")
+                            # Import and call trigger function dynamically to avoid circular imports
+                            try:
+                                from autonomous_supply_manager import trigger_immediate_reorder_check
+                                # Schedule the immediate check (don't await to avoid blocking the transaction)
+                                asyncio.create_task(trigger_immediate_reorder_check(item_id, None, "inventory_change"))
+                            except ImportError:
+                                logger.warning("⚠️ Autonomous trigger not available - will be handled in next cycle")
+                                
+                    except Exception as trigger_error:
+                        logger.warning(f"⚠️ Could not trigger immediate reorder check: {trigger_error}")
+                    
                     # For now, let's NOT auto-distribute to avoid transaction issues
                     # Manual sync can be done separately
                     
@@ -1008,6 +1026,39 @@ class FixedDatabaseIntegration:
                     )
                     
                     logger.info(f"✅ Updated {item_name} in {location_name}: {quantity_change:+d} units")
+                    
+                    # ⚡ IMMEDIATE AUTONOMOUS REORDER TRIGGER ⚡
+                    # Check if this update created a low stock situation and trigger immediate response
+                    try:
+                        # Get the current stock level after update
+                        stock_check_query = text("""
+                            SELECT il.quantity, il.minimum_stock 
+                            FROM item_locations il
+                            WHERE il.item_id = :item_id AND il.location_id = :location_id
+                        """)
+                        stock_result = await conn.execute(stock_check_query, {
+                            "item_id": item_id, 
+                            "location_id": location_id
+                        })
+                        stock_row = stock_result.fetchone()
+                        
+                        if stock_row:
+                            current_quantity = stock_row[0]
+                            minimum_stock = stock_row[1] or 0
+                            
+                            if current_quantity <= minimum_stock:
+                                # Trigger immediate autonomous reorder check
+                                logger.info(f"🚨 Low stock detected after update - triggering immediate reorder check")
+                                # Import and call trigger function dynamically to avoid circular imports
+                                try:
+                                    from autonomous_supply_manager import trigger_immediate_reorder_check
+                                    # Schedule the immediate check (don't await to avoid blocking the transaction)
+                                    asyncio.create_task(trigger_immediate_reorder_check(item_id, location_id, "inventory_change"))
+                                except ImportError:
+                                    logger.warning("⚠️ Autonomous trigger not available - will be handled in next cycle")
+                                    
+                    except Exception as trigger_error:
+                        logger.warning(f"⚠️ Could not trigger immediate reorder check: {trigger_error}")
                 else:
                     logger.warning(f"⚠️ No location found for {item_id} in {location_id}")
                     
