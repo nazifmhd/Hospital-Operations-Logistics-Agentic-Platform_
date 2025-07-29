@@ -54,6 +54,9 @@ const SupplyInventoryDashboard: React.FC = () => {
   const [selectedSupply, setSelectedSupply] = useState<SupplyItem | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reorderQuantity, setReorderQuantity] = useState(0);
+  const [statusCounts, setStatusCounts] = useState({ in_stock: 0, low_stock: 0, out_of_stock: 0 });
+  const [totalInventoryValue, setTotalInventoryValue] = useState(0);
+  const [totalItems, setTotalItems] = useState(0);
 
   useEffect(() => {
     fetchSupplies();
@@ -63,6 +66,16 @@ const SupplyInventoryDashboard: React.FC = () => {
     try {
       const response = await axios.get('http://localhost:8000/supply_inventory/query');
       setSupplies(response.data.supply_items || response.data.items || []);
+      
+      // Use pre-calculated counts from backend
+      setStatusCounts({
+        in_stock: response.data.in_stock_items || 0,
+        low_stock: response.data.low_stock_items || 0,
+        out_of_stock: response.data.out_of_stock_items || 0
+      });
+      
+      setTotalInventoryValue(response.data.total_value || 0);
+      setTotalItems(response.data.total_items || 0);
     } catch (error) {
       console.error('Error fetching supplies:', error);
     } finally {
@@ -76,11 +89,8 @@ const SupplyInventoryDashboard: React.FC = () => {
     try {
       await axios.post('http://localhost:8000/supply_inventory/execute', {
         action: 'create_purchase_order',
-        parameters: {
-          supply_item_id: selectedSupply.id,
-          quantity: reorderQuantity,
-          urgent: selectedSupply.status === 'out_of_stock'
-        }
+        item_name: selectedSupply.name,
+        quantity: reorderQuantity
       });
       
       setDialogOpen(false);
@@ -117,25 +127,14 @@ const SupplyInventoryDashboard: React.FC = () => {
     return colors[category.toLowerCase() as keyof typeof colors] || '#757575';
   };
 
-  const supplyStatusCounts = supplies.reduce((acc, item) => {
-    if (item.current_stock === 0) {
-      acc['out_of_stock'] = (acc['out_of_stock'] || 0) + 1;
-    } else if (item.current_stock <= item.minimum_stock) {
-      acc['low_stock'] = (acc['low_stock'] || 0) + 1;
-    } else {
-      acc['in_stock'] = (acc['in_stock'] || 0) + 1;
-    }
-    return acc;
-  }, {} as Record<string, number>);
+  const supplyStatusCounts = statusCounts; // Use backend-calculated counts
 
   const supplyCategoryCounts = supplies.reduce((acc, item) => {
     acc[item.category] = (acc[item.category] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
-  const totalValue = supplies.reduce((sum, item) => 
-    sum + ((item.current_stock || 0) * (item.cost_per_unit || 0)), 0
-  );
+  const totalValue = totalInventoryValue; // Use backend-calculated total
 
   const lowStockItems = supplies.filter(item => 
     (item.current_stock || 0) <= (item.minimum_stock || 0) && (item.current_stock || 0) > 0
@@ -188,7 +187,7 @@ const SupplyInventoryDashboard: React.FC = () => {
         <Card>
           <CardContent>
             <Typography variant="h4" component="div" color="primary">
-              {supplies.length}
+              {totalItems}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Total Items

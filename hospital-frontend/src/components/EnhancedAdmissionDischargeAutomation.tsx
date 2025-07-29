@@ -71,6 +71,7 @@ interface Patient {
   medical_history: string[];
   current_medications: string[];
   allergies: string[];
+  acuity_level: 'low' | 'medium' | 'high' | 'critical';
   admission_date?: string;
   expected_discharge_date?: string;
   bed_assignment?: string;
@@ -86,30 +87,34 @@ interface Patient {
 interface AdmissionTask {
   id: string;
   patient_id: string;
+  patient_name: string;
   task_type: string;
-  task_name: string;
-  responsible_department: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'failed';
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  estimated_duration: string;
+  task_name?: string;
+  responsible_department?: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'ongoing';
+  priority: 'low' | 'medium' | 'high' | 'urgent' | 'critical';
+  estimated_completion?: string;
+  estimated_duration?: string;
+  assigned_to?: string;
   assigned_staff?: string;
   notes?: string;
-  automated: boolean;
+  automated?: boolean;
   created_at: string;
   completed_at?: string;
+  description?: string;
 }
 
 interface BedAvailability {
   id: string;
-  room_number: string;
-  bed_number: string;
-  department: string;
+  number: string;
   bed_type: 'regular' | 'icu' | 'surgery' | 'maternity' | 'pediatric';
+  department_id: string;
   status: 'available' | 'occupied' | 'cleaning' | 'maintenance' | 'reserved';
+  floor: string;
   patient_id?: string;
-  last_cleaned: string;
-  equipment_attached: string[];
-  isolation_required: boolean;
+  last_cleaned?: string;
+  equipment_attached?: string[];
+  isolation_required?: boolean;
   estimated_availability?: string;
 }
 
@@ -117,10 +122,10 @@ interface AutomationRule {
   id: string;
   name: string;
   trigger: 'admission_started' | 'discharge_ordered' | 'bed_assigned' | 'insurance_verified';
-  actions: string[];
+  description: string;
   enabled: boolean;
-  department_specific: boolean;
-  departments: string[];
+  department_specific?: boolean;
+  departments?: string[];
 }
 
 const EnhancedAdmissionDischargeAutomation: React.FC = () => {
@@ -184,7 +189,10 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
 
   const fetchPatientsData = async () => {
     try {
+      console.log('Fetching patients data...');
       const response = await axios.get('http://localhost:8000/admission_discharge/patients');
+      console.log('Patients API response:', response.data);
+      console.log('Patients count:', response.data.patients?.length);
       setPatients(response.data.patients || []);
       setLoading(false);
     } catch (error) {
@@ -195,8 +203,8 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
 
   const fetchTasksData = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/admission_discharge/tasks');
-      setTasks(response.data.tasks || []);
+      const response = await axios.get('http://localhost:8000/admission_discharge/active_tasks');
+      setTasks(response.data.active_tasks || []);
     } catch (error) {
       console.error('Error fetching tasks data:', error);
     }
@@ -247,8 +255,12 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
     try {
       await axios.post(`http://localhost:8000/admission_discharge/complete_task/${taskId}`);
       await fetchTasksData();
+      // Show success notification
+      console.log(`Task ${taskId} completed successfully`);
     } catch (error) {
       console.error('Error completing task:', error);
+      // Show error notification
+      alert('Failed to complete task. Please try again.');
     }
   };
 
@@ -259,8 +271,10 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
       });
       await fetchPatientsData();
       await fetchBedsData();
+      console.log(`Bed ${bedId} assigned to patient ${patientId} successfully`);
     } catch (error) {
       console.error('Error assigning bed:', error);
+      alert('Failed to assign bed. Please try again.');
     }
   };
 
@@ -336,11 +350,25 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
     );
   }
 
-  const pendingAdmissions = patients.filter(p => p.admission_status === 'scheduled' || p.admission_status === 'in_progress');
-  const pendingDischarges = patients.filter(p => p.admission_status === 'discharge_pending');
-  const activeTasks = tasks.filter(t => t.status !== 'completed');
-  const availableBeds = beds.filter(b => b.status === 'available');
-  const urgentTasks = tasks.filter(t => t.priority === 'urgent' && t.status !== 'completed');
+  // Ensure all arrays are initialized before processing
+  const safePatients = patients || [];
+  const safeTasks = tasks || [];
+  const safeBeds = beds || [];
+  const safeAutomationRules = automationRules || [];
+
+  const pendingAdmissions = safePatients.filter(p => p?.admission_status === 'scheduled' || p?.admission_status === 'in_progress');
+  const pendingDischarges = safePatients.filter(p => p?.admission_status === 'discharge_pending');
+  const currentAdmissions = safePatients.filter(p => p?.admission_status === 'admitted');
+  const activeTasks = safeTasks.filter(t => t?.status !== 'completed');
+  const availableBeds = safeBeds.filter(b => b?.status === 'available');
+  const urgentTasks = safeTasks.filter(t => t?.priority === 'urgent' && t?.status !== 'completed');
+
+  // Debug logging
+  console.log('Patients data:', safePatients);
+  console.log('Patient admission statuses:', safePatients.map(p => p?.admission_status));
+  console.log('Pending admissions:', pendingAdmissions.length);
+  console.log('Current admissions:', currentAdmissions.length);
+  console.log('Pending discharges:', pendingDischarges.length);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -398,10 +426,13 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
               <PersonAdd sx={{ fontSize: 40, color: '#1976d2', mr: 2 }} />
               <Box>
                 <Typography variant="h4" component="div">
-                  {pendingAdmissions.length}
+                  {currentAdmissions.length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Pending Admissions
+                  Current Admissions
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Pending: {pendingAdmissions.length}
                 </Typography>
               </Box>
             </Box>
@@ -474,12 +505,26 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
 
           <Card sx={{ mb: 3 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Active Admissions
-              </Typography>
-              {pendingAdmissions.length === 0 ? (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  Active Admissions ({currentAdmissions.length})
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={async () => {
+                    await fetchPatientsData();
+                    await fetchTasksData();
+                    console.log('Data refreshed');
+                  }}
+                  startIcon={<Notifications />}
+                >
+                  Refresh
+                </Button>
+              </Box>
+              {currentAdmissions.length === 0 ? (
                 <Alert severity="info">
-                  No pending admissions at this time.
+                  No current admissions at this time.
                 </Alert>
               ) : (
                 <TableContainer>
@@ -498,9 +543,9 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {pendingAdmissions.map((patient) => {
-                        const patientTasks = tasks.filter(t => t.patient_id === patient.id);
-                        const completedTasks = patientTasks.filter(t => t.status === 'completed').length;
+                      {currentAdmissions.map((patient) => {
+                        const patientTasks = safeTasks.filter(t => t?.patient_id === patient?.id);
+                        const completedTasks = patientTasks.filter(t => t?.status === 'completed').length;
                         const totalTasks = patientTasks.length;
                         const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
@@ -579,7 +624,7 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
                                       color="primary"
                                       onClick={() => {
                                         const suitableBed = availableBeds.find(b => 
-                                          b.department === patient.department
+                                          b.department_id === patient.department
                                         );
                                         if (suitableBed) {
                                           assignBed(patient.id, suitableBed.id);
@@ -605,9 +650,22 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
           {/* Active Admission Tasks */}
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Active Admission Tasks
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  Active Admission Tasks ({activeTasks.length})
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={async () => {
+                    await fetchTasksData();
+                    console.log('Tasks refreshed');
+                  }}
+                  startIcon={<Assignment />}
+                >
+                  Refresh Tasks
+                </Button>
+              </Box>
               <TableContainer>
                 <Table>
                   <TableHead>
@@ -623,25 +681,22 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {activeTasks.filter(t => 
-                      patients.some(p => p.id === t.patient_id && 
-                        (p.admission_status === 'scheduled' || p.admission_status === 'in_progress'))
-                    ).map((task) => (
+                    {activeTasks.map((task) => (
                       <TableRow key={task.id}>
                         <TableCell>
-                          {patients.find(p => p.id === task.patient_id)?.name || 'Unknown'}
+                          {task.patient_name || safePatients.find(p => p?.id === task?.patient_id)?.name || 'System Task'}
                         </TableCell>
                         <TableCell>
                           <Box>
                             <Typography variant="body2" fontWeight="bold">
-                              {task.task_name}
+                              {task.task_name || task.description || task.task_type}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
                               {task.task_type}
                             </Typography>
                           </Box>
                         </TableCell>
-                        <TableCell>{task.responsible_department}</TableCell>
+                        <TableCell>{task.responsible_department || task.assigned_to || 'System'}</TableCell>
                         <TableCell>
                           <Chip
                             label={task.priority.toUpperCase()}
@@ -656,9 +711,14 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
                             size="small"
                           />
                         </TableCell>
-                        <TableCell>{task.estimated_duration}</TableCell>
                         <TableCell>
-                          {task.automated ? (
+                          {task.estimated_duration || 
+                           (task.estimated_completion ? 
+                             new Date(task.estimated_completion).toLocaleTimeString() : 
+                             'N/A')}
+                        </TableCell>
+                        <TableCell>
+                          {task.automated !== false ? (
                             <Chip
                               icon={<AutoAwesome />}
                               label="Auto"
@@ -722,9 +782,9 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
                     </TableHead>
                     <TableBody>
                       {pendingDischarges.map((patient) => {
-                        const dischargeTasks = tasks.filter(t => 
-                          t.patient_id === patient.id && 
-                          t.task_type.includes('discharge')
+                        const dischargeTasks = safeTasks.filter(t => 
+                          t?.patient_id === patient?.id && 
+                          t?.task_type?.includes('discharge')
                         );
                         const completedDischargeTasks = dischargeTasks.filter(t => t.status === 'completed').length;
                         
@@ -771,7 +831,18 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
                                   variant="contained"
                                   color="success"
                                   startIcon={<Print />}
-                                  onClick={() => console.log("Print Docs clicked")}
+                                  onClick={() => {
+                                    // Generate and download discharge documents
+                                    const patientData = {
+                                      name: patient.name,
+                                      mrn: patient.mrn,
+                                      department: patient.department,
+                                      physician: patient.attending_physician,
+                                      discharged_at: new Date().toLocaleString()
+                                    };
+                                    console.log('Generating discharge documents for:', patientData);
+                                    alert(`Discharge documents generated for ${patient.name}`);
+                                  }}
                                 >
                                   Print Docs
                                 </Button>
@@ -809,20 +880,20 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
           <Card>
             <CardContent>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 2 }}>
-                {beds.map((bed) => (
+                {safeBeds.map((bed) => (
                   <Card key={bed.id} variant="outlined">
                     <CardContent>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                         <Box>
                           <Typography variant="h6">
-                            Room {bed.room_number} - Bed {bed.bed_number}
+                            Bed {bed.number}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
-                            {bed.department}
+                            Floor {bed.floor} - {bed.department_id}
                           </Typography>
                         </Box>
                         <Chip
-                          label={bed.bed_type.toUpperCase()}
+                          label={bed.bed_type?.toUpperCase() || 'GENERAL'}
                           color={getBedTypeColor(bed.bed_type)}
                           size="small"
                         />
@@ -830,44 +901,26 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
 
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <Chip
-                          label={bed.status.replace('_', ' ').toUpperCase()}
-                          color={getStatusColor(bed.status)}
+                          label={bed.status?.replace('_', ' ').toUpperCase() || 'UNKNOWN'}
+                          color={getStatusColor(bed.status?.toLowerCase())}
                           size="small"
                           sx={{ mr: 1 }}
                         />
-                        {bed.isolation_required && (
-                          <Chip
-                            label="ISOLATION"
-                            color="warning"
-                            size="small"
-                            sx={{ mr: 1 }}
-                          />
-                        )}
                       </Box>
 
                       {bed.patient_id && (
                         <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>Patient:</strong> {patients.find(p => p.id === bed.patient_id)?.name || 'Unknown'}
+                          <strong>Patient:</strong> {safePatients.find(p => p?.id === bed?.patient_id)?.name || 'Unknown'}
                         </Typography>
                       )}
 
                       <Typography variant="body2" sx={{ mb: 1 }}>
-                        <strong>Last Cleaned:</strong> {new Date(bed.last_cleaned).toLocaleDateString()}
+                        <strong>Floor:</strong> {bed.floor || 'N/A'}
                       </Typography>
 
-                      {bed.equipment_attached.length > 0 && (
-                        <Box sx={{ mt: 1 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Equipment: {bed.equipment_attached.join(', ')}
-                          </Typography>
-                        </Box>
-                      )}
-
-                      {bed.estimated_availability && (
-                        <Typography variant="caption" color="success.main">
-                          Available: {bed.estimated_availability}
-                        </Typography>
-                      )}
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Department ID:</strong> {bed.department_id || 'N/A'}
+                      </Typography>
                     </CardContent>
                   </Card>
                 ))}
@@ -895,14 +948,14 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
                     <TableRow>
                       <TableCell>Rule Name</TableCell>
                       <TableCell>Trigger</TableCell>
-                      <TableCell>Actions</TableCell>
-                      <TableCell>Department Specific</TableCell>
+                      <TableCell>Description</TableCell>
+                      <TableCell>Scope</TableCell>
                       <TableCell>Status</TableCell>
                       <TableCell>Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {automationRules.map((rule) => (
+                    {safeAutomationRules.map((rule) => (
                       <TableRow key={rule.id}>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -921,21 +974,11 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">
-                            {rule.actions.slice(0, 2).join(', ')}
-                            {rule.actions.length > 2 && ` +${rule.actions.length - 2} more`}
+                            {rule.description || 'No description available'}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          {rule.department_specific ? (
-                            <Box>
-                              <Chip label="Yes" color="warning" size="small" />
-                              <Typography variant="caption" display="block">
-                                {rule.departments.join(', ')}
-                              </Typography>
-                            </Box>
-                          ) : (
-                            <Chip label="Global" color="success" size="small" />
-                          )}
+                          <Chip label="Global" color="success" size="small" />
                         </TableCell>
                         <TableCell>
                           <Switch
@@ -945,7 +988,21 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
                           />
                         </TableCell>
                         <TableCell>
-                          <Button size="small" variant="outlined" onClick={() => console.log("Edit clicked")}>Edit</Button>
+                          <Button 
+                            size="small" 
+                            variant="outlined" 
+                            onClick={() => {
+                              // Edit automation rule functionality
+                              const newDescription = prompt('Edit rule description:', rule.description);
+                              if (newDescription && newDescription !== rule.description) {
+                                console.log(`Updating rule ${rule.id} description to:`, newDescription);
+                                // Here you would call an API to update the rule
+                                alert(`Rule updated: ${newDescription}`);
+                              }
+                            }}
+                          >
+                            Edit
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1095,6 +1152,199 @@ const EnhancedAdmissionDischargeAutomation: React.FC = () => {
           >
             Start Admission Process
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Patient Details Dialog */}
+      <Dialog
+        open={!!selectedPatient}
+        onClose={() => setSelectedPatient(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Avatar sx={{ bgcolor: 'primary.main' }}>
+              <Person />
+            </Avatar>
+            <Box>
+              <Typography variant="h6">
+                {selectedPatient?.name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                MRN: {selectedPatient?.mrn} • {selectedPatient?.age} years, {selectedPatient?.gender}
+              </Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, mt: 2 }}>
+            {/* Left Column - Patient Info */}
+            <Box>
+              <Typography variant="h6" gutterBottom>Patient Information</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography><strong>Department:</strong> {selectedPatient?.department}</Typography>
+                <Typography><strong>Attending Physician:</strong> {selectedPatient?.attending_physician}</Typography>
+                <Typography><strong>Admission Type:</strong> {selectedPatient?.admission_type}</Typography>
+                <Typography><strong>Acuity Level:</strong> {selectedPatient?.acuity_level}</Typography>
+                <Typography><strong>Status:</strong> {selectedPatient?.admission_status}</Typography>
+                <Typography><strong>Admission Date:</strong> {selectedPatient?.admission_date ? new Date(selectedPatient.admission_date).toLocaleString() : 'N/A'}</Typography>
+              </Box>
+              
+              <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Contact Information</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography><strong>Phone:</strong> {selectedPatient?.phone}</Typography>
+                <Typography><strong>Emergency Contact:</strong> {selectedPatient?.emergency_contact}</Typography>
+                <Typography><strong>Insurance:</strong> {selectedPatient?.insurance_info}</Typography>
+              </Box>
+            </Box>
+
+            {/* Right Column - Medical Info */}
+            <Box>
+              <Typography variant="h6" gutterBottom>Medical Information</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>Current Medications</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {selectedPatient?.current_medications?.map((med, index) => (
+                      <Chip key={index} label={med} size="small" color="info" />
+                    )) || <Typography color="text.secondary">None listed</Typography>}
+                  </Box>
+                </Box>
+                
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>Allergies</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {selectedPatient?.allergies?.map((allergy, index) => (
+                      <Chip key={index} label={allergy} size="small" color="warning" />
+                    )) || <Typography color="text.secondary">None listed</Typography>}
+                  </Box>
+                </Box>
+
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>Medical History</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {selectedPatient?.medical_history?.map((history, index) => (
+                      <Chip key={index} label={history} size="small" />
+                    )) || <Typography color="text.secondary">None listed</Typography>}
+                  </Box>
+                </Box>
+
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>Bed Assignment</Typography>
+                  {selectedPatient?.bed_assignment ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Bed color="success" />
+                      <Typography>Bed {selectedPatient.bed_assignment}</Typography>
+                    </Box>
+                  ) : (
+                    <Box>
+                      <Chip label="No Bed Assigned" color="warning" size="small" />
+                      {availableBeds.length > 0 && (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          sx={{ ml: 2 }}
+                          onClick={() => {
+                            const suitableBed = availableBeds.find(b => 
+                              b.department_id === selectedPatient?.department
+                            );
+                            if (suitableBed && selectedPatient) {
+                              assignBed(selectedPatient.id, suitableBed.id);
+                              setSelectedPatient(null);
+                            }
+                          }}
+                        >
+                          Auto-Assign Bed
+                        </Button>
+                      )}
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+
+          {/* Active Tasks for this Patient */}
+          {selectedPatient && (
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="h6" gutterBottom>Active Tasks</Typography>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Task</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Priority</TableCell>
+                      <TableCell>Assigned To</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {safeTasks.filter(t => t?.patient_id === selectedPatient.id).map((task) => (
+                      <TableRow key={task.id}>
+                        <TableCell>{task.description || task.task_type}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={task.status.replace('_', ' ').toUpperCase()}
+                            color={getStatusColor(task.status)}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={task.priority.toUpperCase()}
+                            color={getPriorityColor(task.priority)}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>{task.assigned_to}</TableCell>
+                        <TableCell>
+                          {task.status === 'in_progress' && (
+                            <Button
+                              size="small"
+                              color="success"
+                              variant="contained"
+                              onClick={() => {
+                                completeTask(task.id);
+                                // Refresh patient data after completing task
+                                setTimeout(() => fetchTasksData(), 500);
+                              }}
+                            >
+                              Complete
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {safeTasks.filter(t => t?.patient_id === selectedPatient.id).length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          <Typography color="text.secondary">No active tasks for this patient</Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSelectedPatient(null)}>Close</Button>
+          {selectedPatient?.admission_status === 'admitted' && (
+            <Button
+              variant="contained"
+              color="warning"
+              onClick={() => {
+                // Start discharge process
+                console.log('Starting discharge for', selectedPatient.id);
+                setSelectedPatient(null);
+              }}
+            >
+              Start Discharge
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

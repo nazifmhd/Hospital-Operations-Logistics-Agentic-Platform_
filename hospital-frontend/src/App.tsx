@@ -24,6 +24,7 @@ import {
   ShoppingCart,
   PersonAdd,
   Assignment,
+  Schedule,
 } from '@mui/icons-material';
 import axios from 'axios';
 
@@ -42,6 +43,7 @@ import { NotificationProvider } from './contexts/NotificationContext';
 // Import new automated workflow components
 import AutomatedSupplyReorderingWorkflow from './components/AutomatedSupplyReorderingWorkflow';
 import DynamicStaffReallocationSystem from './components/DynamicStaffReallocationSystem';
+import EnhancedShiftManagement from './components/EnhancedShiftManagement';
 import EquipmentRequestDispatchInterface from './components/EquipmentRequestDispatchInterface';
 import EnhancedAdmissionDischargeAutomation from './components/EnhancedAdmissionDischargeAutomation';
 
@@ -266,6 +268,11 @@ function App() {
                 iconPosition="start"
               />
               <Tab 
+                icon={<Schedule />} 
+                label="Enhanced Shift Management" 
+                iconPosition="start"
+              />
+              <Tab 
                 icon={<Assignment />} 
                 label="Equipment Request & Dispatch" 
                 iconPosition="start"
@@ -377,10 +384,14 @@ function App() {
           </TabPanel>
 
           <TabPanel value={tabValue} index={11}>
-            <EquipmentRequestDispatchInterface />
+            <EnhancedShiftManagement />
           </TabPanel>
 
           <TabPanel value={tabValue} index={12}>
+            <EquipmentRequestDispatchInterface />
+          </TabPanel>
+
+          <TabPanel value={tabValue} index={13}>
             <EnhancedAdmissionDischargeAutomation />
           </TabPanel>
         </Card>

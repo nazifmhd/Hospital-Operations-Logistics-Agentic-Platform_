@@ -86,18 +86,19 @@ const StaffAllocationDashboard: React.FC = () => {
     if (!selectedStaff || !newStatus) return;
 
     try {
-      await axios.post('http://localhost:8000/staff_allocation/execute', {
-        action: 'update_staff_status',
-        parameters: {
-          staff_id: selectedStaff.id,
-          status: newStatus
-        }
+      // Use direct update endpoint for immediate database update
+      const response = await axios.post('http://localhost:8000/staff_allocation/direct_update', {
+        staff_id: selectedStaff.id,
+        status: newStatus
       });
+      
+      console.log('Staff status update response:', response.data);
       
       setDialogOpen(false);
       fetchStaff(); // Refresh the data
     } catch (error) {
       console.error('Error updating staff status:', error);
+      alert('Failed to update staff status. Please try again.');
     }
   };
 
@@ -122,7 +123,9 @@ const StaffAllocationDashboard: React.FC = () => {
   };
 
   const staffStatusCounts = staff.reduce((acc, member) => {
-    acc[member.status] = (acc[member.status] || 0) + 1;
+    // Normalize status to lowercase for consistent counting
+    const normalizedStatus = member.status.toLowerCase();
+    acc[normalizedStatus] = (acc[normalizedStatus] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
@@ -274,14 +277,14 @@ const StaffAllocationDashboard: React.FC = () => {
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
                           <Avatar sx={{ mr: 2, bgcolor: getRoleColor(member.role) }}>
-                            {member.name.charAt(0)}
+                            {member.name?.charAt(0) || 'N/A'}
                           </Avatar>
                           <Box>
                             <Typography variant="body2" fontWeight="bold">
-                              {member.name}
+                              {member.name || 'Unknown'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
-                              {member.employee_id}
+                              {member.employee_id || 'N/A'}
                             </Typography>
                           </Box>
                         </Box>
@@ -350,11 +353,11 @@ const StaffAllocationDashboard: React.FC = () => {
                 label="Status"
                 onChange={(e) => setNewStatus(e.target.value)}
               >
-                <MenuItem value="available">Available</MenuItem>
-                <MenuItem value="on_duty">On Duty</MenuItem>
-                <MenuItem value="break">On Break</MenuItem>
-                <MenuItem value="unavailable">Unavailable</MenuItem>
-                <MenuItem value="off_duty">Off Duty</MenuItem>
+                <MenuItem value="AVAILABLE">Available</MenuItem>
+                <MenuItem value="ON_DUTY">On Duty</MenuItem>
+                <MenuItem value="BREAK">On Break</MenuItem>
+                <MenuItem value="UNAVAILABLE">Unavailable</MenuItem>
+                <MenuItem value="OFF_DUTY">Off Duty</MenuItem>
               </Select>
             </FormControl>
           </Box>

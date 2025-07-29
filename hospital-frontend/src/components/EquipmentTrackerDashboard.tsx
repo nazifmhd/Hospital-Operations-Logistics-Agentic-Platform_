@@ -61,6 +61,7 @@ const EquipmentTrackerDashboard: React.FC = () => {
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newStatus, setNewStatus] = useState('');
+  const [maintenanceDueCount, setMaintenanceDueCount] = useState(0);
 
   useEffect(() => {
     fetchEquipment();
@@ -71,6 +72,7 @@ const EquipmentTrackerDashboard: React.FC = () => {
     try {
       const response = await axios.get('http://localhost:8000/equipment_tracker/query');
       setEquipment(response.data.equipment || []);
+      setMaintenanceDueCount(response.data.maintenance_due_30_days || 0);
     } catch (error) {
       console.error('Error fetching equipment:', error);
     } finally {
@@ -94,18 +96,19 @@ const EquipmentTrackerDashboard: React.FC = () => {
     if (!selectedEquipment || !newStatus) return;
 
     try {
-      await axios.post('http://localhost:8000/equipment_tracker/execute', {
-        action: 'update_equipment_status',
-        parameters: {
-          equipment_id: selectedEquipment.id,
-          status: newStatus
-        }
+      // Use direct update endpoint for immediate database update
+      const response = await axios.post('http://localhost:8000/equipment_tracker/direct_update', {
+        equipment_id: selectedEquipment.id,
+        status: newStatus
       });
+      
+      console.log('Equipment status update response:', response.data);
       
       setDialogOpen(false);
       fetchEquipment(); // Refresh the data
     } catch (error) {
       console.error('Error updating equipment status:', error);
+      alert('Failed to update equipment status. Please try again.');
     }
   };
 
@@ -146,7 +149,9 @@ const EquipmentTrackerDashboard: React.FC = () => {
   };
 
   const equipmentStatusCounts = equipment.reduce((acc, item) => {
-    acc[item.status] = (acc[item.status] || 0) + 1;
+    // Normalize status to lowercase for consistent counting
+    const normalizedStatus = item.status.toLowerCase();
+    acc[normalizedStatus] = (acc[normalizedStatus] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
@@ -154,13 +159,6 @@ const EquipmentTrackerDashboard: React.FC = () => {
     acc[item.equipment_type] = (acc[item.equipment_type] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
-
-  const maintenanceDue = equipment.filter(item => {
-    const nextMaintenance = new Date(item.next_maintenance);
-    const today = new Date();
-    const daysUntil = Math.ceil((nextMaintenance.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    return daysUntil <= 30;
-  }).length;
 
   if (loading) {
     return <LinearProgress />;
@@ -224,10 +222,10 @@ const EquipmentTrackerDashboard: React.FC = () => {
         <Card>
           <CardContent>
             <Typography variant="h4" component="div" color="warning.main">
-              {maintenanceDue}
+              {maintenanceDueCount}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Maintenance Due
+              Maintenance Due (30 days)
             </Typography>
           </CardContent>
         </Card>
@@ -386,11 +384,12 @@ const EquipmentTrackerDashboard: React.FC = () => {
                 label="Status"
                 onChange={(e) => setNewStatus(e.target.value)}
               >
-                <MenuItem value="available">Available</MenuItem>
-                <MenuItem value="in_use">In Use</MenuItem>
-                <MenuItem value="maintenance">Maintenance</MenuItem>
-                <MenuItem value="broken">Broken</MenuItem>
-                <MenuItem value="cleaning">Cleaning</MenuItem>
+                <MenuItem value="AVAILABLE">Available</MenuItem>
+                <MenuItem value="IN_USE">In Use</MenuItem>
+                <MenuItem value="MAINTENANCE">Maintenance</MenuItem>
+                <MenuItem value="BROKEN">Broken</MenuItem>
+                <MenuItem value="CLEANING">Cleaning</MenuItem>
+                <MenuItem value="CALIBRATION">Calibration</MenuItem>
               </Select>
             </FormControl>
           </Box>

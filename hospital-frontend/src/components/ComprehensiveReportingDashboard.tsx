@@ -186,7 +186,7 @@ const ComprehensiveReportingDashboard: React.FC = () => {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={capacityData?.bed_utilization || []}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="department_name" />
+                <XAxis dataKey="department" />
                 <YAxis />
                 <Tooltip />
                 <Legend />
@@ -319,7 +319,7 @@ const ComprehensiveReportingDashboard: React.FC = () => {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={capacityData?.staff_utilization || []}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="department_name" />
+                <XAxis dataKey="department" />
                 <YAxis />
                 <Tooltip />
                 <Legend />

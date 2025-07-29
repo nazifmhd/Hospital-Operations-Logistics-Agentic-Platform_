@@ -59,6 +59,7 @@ interface PurchaseOrder {
   status: 'draft' | 'pending_approval' | 'approved' | 'sent' | 'delivered';
   created_at: string;
   approved_by?: string;
+  notes?: string;
   items: AutoReorderItem[];
 }
 
@@ -107,7 +108,12 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
   const fetchReorderData = async () => {
     try {
       const response = await axios.get('http://localhost:8000/supply_inventory/auto_reorder_status');
-      setReorderItems(response.data.auto_reorders || []);
+      const allReorderItems = response.data.auto_reorders || [];
+      
+      // Filter out items that are already approved (have approval notes)
+      const pendingItems = allReorderItems.filter((item: any) =>
+        !item.notes || !item.notes.includes('Approved via Auto Supply Reordering')
+      );      setReorderItems(pendingItems);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching reorder data:', error);
@@ -230,14 +236,20 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
     'Delivery'
   ];
 
-  const getActiveStep = (status: string) => {
-    switch (status) {
+  const getActiveStep = (order: any) => {
+    // Check if order is approved via notes
+    if (order.notes && order.notes.includes('Approved via Auto Supply Reordering')) {
+      return 2; // Approved step
+    }
+    
+    // Use status for other cases
+    switch (order.status) {
       case 'draft': return 0;
       case 'pending_approval': return 1;
       case 'approved': return 2;
       case 'sent': return 3;
       case 'delivered': return 4;
-      default: return 0;
+      default: return 1; // Default to pending approval
     }
   };
 
@@ -299,10 +311,10 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
               <Schedule sx={{ fontSize: 40, color: '#1976d2', mr: 2 }} />
               <Box>
                 <Typography variant="h4" component="div">
-                  {purchaseOrders.filter(order => order.status === 'pending_approval').length}
+                  {purchaseOrders.filter(order => order.notes && order.notes.includes('Approved via Auto Supply Reordering')).length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Pending Approval
+                  Approved Orders
                 </Typography>
               </Box>
             </Box>
@@ -440,7 +452,6 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
                     <TableCell align="right">Total Cost</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell>Workflow Progress</TableCell>
-                    <TableCell>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -459,59 +470,30 @@ const AutomatedSupplyReorderingWorkflow: React.FC = () => {
                       <TableCell align="right">${order.total_cost.toFixed(2)}</TableCell>
                       <TableCell>
                         <Chip
-                          label={order.status.replace('_', ' ').toUpperCase()}
-                          color={getStatusColor(order.status)}
+                          label={
+                            (order.notes && order.notes.includes('Approved via Auto Supply Reordering'))
+                              ? 'APPROVED'
+                              : order.status.replace('_', ' ').toUpperCase()
+                          }
+                          color={
+                            (order.notes && order.notes.includes('Approved via Auto Supply Reordering'))
+                              ? 'success'
+                              : getStatusColor(order.status)
+                          }
                           size="small"
                         />
                       </TableCell>
                       <TableCell>
                         <Box sx={{ width: 200 }}>
-                          <Stepper activeStep={getActiveStep(order.status)} sx={{ fontSize: '0.75rem' }}>
+                          <Stepper activeStep={getActiveStep(order)} sx={{ fontSize: '0.75rem' }}>
                             {getWorkflowSteps().map((label, index) => (
                               <Step key={label}>
                                 <StepLabel sx={{ fontSize: '0.75rem' }}>
-                                  {index === getActiveStep(order.status) ? label : ''}
+                                  {index === getActiveStep(order) ? label : ''}
                                 </StepLabel>
                               </Step>
                             ))}
                           </Stepper>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Tooltip title="View Details">
-                            <IconButton
-                              size="small"
-                              onClick={() => {
-                                setSelectedOrder(order);
-                                setDialogOpen(true);
-                              }}
-                            >
-                              <Receipt />
-                            </IconButton>
-                          </Tooltip>
-                          {order.status === 'pending_approval' && (
-                            <>
-                              <Tooltip title="Approve">
-                                <IconButton
-                                  size="small"
-                                  color="success"
-                                  onClick={() => approvePurchaseOrder(order.id)}
-                                >
-                                  <CheckCircle />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Reject">
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => rejectPurchaseOrder(order.id)}
-                                >
-                                  <Warning />
-                                </IconButton>
-                              </Tooltip>
-                            </>
-                          )}
                         </Box>
                       </TableCell>
                     </TableRow>
