@@ -641,6 +641,111 @@ class FixedDatabaseIntegration:
             logger.error(f"❌ Failed to get multi-location inventory data from database: {e}")
             raise
     
+    async def get_inventory_by_location(self, location_name: str = None, location_id: str = None):
+        """Get inventory items filtered by location"""
+        try:
+            logger.info(f"🔍 Fetching inventory data for location: {location_name or location_id}")
+            async with self.async_session() as session:
+                
+                # Build the WHERE clause based on what's provided
+                where_clause = "WHERE (ii.is_active = TRUE OR ii.is_active IS NULL)"
+                params = {}
+                
+                if location_id:
+                    where_clause += " AND il.location_id = :location_id"
+                    params['location_id'] = location_id
+                elif location_name:
+                    # Try to match location name (case-insensitive)
+                    where_clause += " AND (LOWER(l.name) LIKE LOWER(:location_name) OR LOWER(il.location_id) LIKE LOWER(:location_name))"
+                    params['location_name'] = f"%{location_name}%"
+                
+                query = f"""
+                    SELECT 
+                        il.item_id, 
+                        ii.name as item_name, 
+                        ii.category, 
+                        ii.unit_of_measure, 
+                        il.quantity as current_stock, 
+                        il.minimum_threshold as minimum_stock, 
+                        il.maximum_capacity as maximum_stock, 
+                        il.minimum_threshold as reorder_point, 
+                        ii.unit_cost, 
+                        il.location_id, 
+                        COALESCE(l.name, il.location_id) as location_name,
+                        ii.supplier_id, 
+                        ii.is_active, 
+                        ii.description,
+                        il.last_updated
+                    FROM item_locations il
+                    LEFT JOIN inventory_items ii ON il.item_id = ii.item_id
+                    LEFT JOIN locations l ON il.location_id = l.location_id
+                    {where_clause}
+                    ORDER BY ii.name, il.location_id
+                """
+                
+                result = await session.execute(text(query), params)
+                
+                inventory_items = []
+                for row in result.fetchall():
+                    # Safe conversion for all numeric fields
+                    current_stock = self.safe_convert_to_int(row[4], "current_stock")
+                    minimum_stock = self.safe_convert_to_int(row[5], "minimum_stock")
+                    maximum_stock = self.safe_convert_to_int(row[6], "maximum_stock")
+                    reorder_point = self.safe_convert_to_int(row[7], "reorder_point")
+                    unit_cost = self.safe_convert_to_float(row[8], "unit_cost")
+                    
+                    # Determine stock status
+                    stock_status = "GOOD"
+                    if current_stock <= minimum_stock:
+                        stock_status = "CRITICAL"
+                    elif current_stock <= reorder_point:
+                        stock_status = "LOW"
+                    elif current_stock >= maximum_stock * 0.9:
+                        stock_status = "HIGH"
+                    
+                    item_data = {
+                        "item_id": row[0] or "",
+                        "item_name": row[1] or "",
+                        "name": row[1] or "",  # Duplicate for compatibility
+                        "category": row[2] or "",
+                        "unit_of_measure": row[3] or "",
+                        "unit": row[3] or "",  # Duplicate for compatibility
+                        "current_stock": current_stock,
+                        "minimum_stock": minimum_stock,
+                        "maximum_stock": maximum_stock,
+                        "reorder_point": reorder_point,
+                        "unit_cost": unit_cost,
+                        "total_value": float(current_stock * unit_cost),
+                        "location_id": row[9] or "",
+                        "location_name": row[10] or "",
+                        "location": row[10] or "",  # Duplicate for compatibility
+                        "supplier_id": row[11] or "",
+                        "is_active": bool(row[12]) if row[12] is not None else True,
+                        "description": row[13] or "",
+                        "last_updated": row[14].isoformat() if row[14] else datetime.now().isoformat(),
+                        "sku": "",  # Default empty since not available in database
+                        "stock_status": stock_status,
+                        # Additional computed fields
+                        "stock_percentage": float((current_stock / maximum_stock * 100) if maximum_stock > 0 else 0),
+                        "stock_deficit": max(0, reorder_point - current_stock),
+                        "data_source": "database_location_filtered"
+                    }
+                    
+                    inventory_items.append(item_data)
+                
+                logger.info(f"✅ Successfully fetched {len(inventory_items)} inventory items for location: {location_name or location_id}")
+                return {
+                    "items": inventory_items,
+                    "location_filter": location_name or location_id,
+                    "total_items": len(inventory_items),
+                    "data_source": "database_location_filtered",
+                    "last_updated": datetime.now().isoformat()
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to get inventory data by location from database: {e}")
+            raise
+    
     async def get_transfers_data(self):
         """Get transfers data from database"""
         try:

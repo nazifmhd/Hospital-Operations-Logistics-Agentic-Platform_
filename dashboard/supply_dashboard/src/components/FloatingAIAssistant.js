@@ -1,43 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Bot, X, Sparkles } from 'lucide-react';
-import LLMChatInterface from './LLMChatInterface';
+import AgentChatInterface from './AgentChatInterface';
 
 const FloatingAIAssistant = ({ systemContext = {} }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [llmAvailable, setLlmAvailable] = useState(false);
+  const [agentAvailable, setAgentAvailable] = useState(true); // Always available since it's self-contained
   const [isAnimating, setIsAnimating] = useState(false);
-
-  // Check LLM availability
-  useEffect(() => {
-    const checkLLMAvailability = async () => {
-      try {
-        const response = await fetch('http://localhost:8000/api/v2/llm/status');
-        if (response.ok) {
-          const data = await response.json();
-          setLlmAvailable(data.llm_available);
-        }
-      } catch (error) {
-        console.warn('LLM service not available:', error);
-        setLlmAvailable(false);
-      }
-    };
-
-    checkLLMAvailability();
-    
-    // Recheck every 5 minutes
-    const interval = setInterval(checkLLMAvailability, 300000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Trigger animation on first load
   useEffect(() => {
-    if (llmAvailable) {
+    if (agentAvailable) {
       setTimeout(() => setIsAnimating(true), 1000);
       setTimeout(() => setIsAnimating(false), 3000);
     }
-  }, [llmAvailable]);
+  }, [agentAvailable]);
 
-  if (!llmAvailable) return null;
+  if (!agentAvailable) return null;
 
   return (
     <>
@@ -62,9 +40,9 @@ const FloatingAIAssistant = ({ systemContext = {} }) => {
             </div>
           </div>
 
-          {/* Beta Badge */}
-          <div className="absolute -top-1 -right-1 bg-yellow-400 text-yellow-900 text-xs font-bold px-1.5 py-0.5 rounded-full">
-            β
+          {/* Agent Badge */}
+          <div className="absolute -top-1 -right-1 bg-green-400 text-green-900 text-xs font-bold px-1.5 py-0.5 rounded-full">
+            AI
           </div>
 
           {/* Sparkle Effect */}
@@ -85,9 +63,9 @@ const FloatingAIAssistant = ({ systemContext = {} }) => {
                 </div>
               </div>
               <div>
-                <h4 className="text-sm font-semibold text-gray-900">AI Assistant Available!</h4>
+                <h4 className="text-sm font-semibold text-gray-900">AI Agent Available!</h4>
                 <p className="text-xs text-gray-600 mt-1">
-                  Ask questions about inventory, orders, alerts, or get insights about your supply chain.
+                  Ask questions about inventory, perform actions through conversation, or get intelligent insights about your supply chain.
                 </p>
               </div>
             </div>
@@ -96,16 +74,31 @@ const FloatingAIAssistant = ({ systemContext = {} }) => {
         )}
       </div>
 
-      {/* Chat Interface */}
-      <LLMChatInterface
-        isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
-        systemContext={{
-          ...systemContext,
-          source: 'floating_assistant',
-          timestamp: new Date().toISOString()
-        }}
-      />
+      {/* Comprehensive AI Agent Chat Interface */}
+      {isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold flex items-center">
+                <Bot className="w-6 h-6 mr-2 text-blue-600" />
+                AI Agent Assistant
+                <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-normal">
+                  Powered by RAG + LLM
+                </span>
+              </h3>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <AgentChatInterface />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

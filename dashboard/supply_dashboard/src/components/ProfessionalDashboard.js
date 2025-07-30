@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSupplyData } from '../context/SupplyDataContext';
-import LLMChatInterface from './LLMChatInterface';
+import AgentChatInterface from './AgentChatInterface';
 import { 
   Package, 
   AlertTriangle, 
@@ -25,7 +25,8 @@ const ProfessionalDashboard = () => {
   const [activityFilter, setActivityFilter] = useState('all');
   const [recentActivities, setRecentActivities] = useState([]);
   const [allActivities, setAllActivities] = useState([]);
-  const [showLLMChat, setShowLLMChat] = useState(false);
+  const [showAgentChat, setShowAgentChat] = useState(false);
+  const [agentAvailable, setAgentAvailable] = useState(true); // Always available since it's self-contained
   const [llmAvailable, setLlmAvailable] = useState(false);
 
   // Fetch real-time activities from database only
@@ -339,15 +340,15 @@ const ProfessionalDashboard = () => {
             </p>
           </div>
           <div className="flex items-center space-x-4">
-            {/* AI Assistant Button */}
-            {llmAvailable && (
+            {/* AI Agent Assistant Button */}
+            {agentAvailable && (
               <button
-                onClick={() => setShowLLMChat(true)}
+                onClick={() => setShowAgentChat(true)}
                 className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
               >
                 <Bot className="w-5 h-5" />
                 <span className="font-medium">AI Assistant</span>
-                <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Beta</span>
+                <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Agent</span>
               </button>
             )}
             
@@ -688,18 +689,41 @@ const ProfessionalDashboard = () => {
         </div>
       )}
 
-      {/* LLM Chat Interface */}
-      {llmAvailable && (
-        <LLMChatInterface
-          isOpen={showLLMChat}
-          onClose={() => setShowLLMChat(false)}
-          systemContext={{
-            dashboard_data: dashboardData,
-            user_role: 'supply_manager',
-            current_page: 'professional_dashboard',
-            timestamp: new Date().toISOString()
-          }}
-        />
+      {/* Comprehensive AI Agent Chat Interface */}
+      {agentAvailable && showAgentChat && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold flex items-center">
+                <Bot className="w-6 h-6 mr-2 text-blue-600" />
+                AI Agent Assistant
+              </h3>
+              <button
+                onClick={() => setShowAgentChat(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <AgentChatInterface />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating AI Agent Button */}
+      {agentAvailable && !showAgentChat && (
+        <button
+          onClick={() => setShowAgentChat(true)}
+          className="fixed bottom-6 right-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl z-40 transition-all duration-200 hover:from-blue-700 hover:to-purple-700 group"
+          title="Open AI Agent Assistant"
+        >
+          <Bot className="w-6 h-6 group-hover:scale-110 transition-transform" />
+          <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            AI Agent
+          </span>
+        </button>
       )}
     </div>
   );

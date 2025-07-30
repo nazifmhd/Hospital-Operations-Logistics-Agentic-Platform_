@@ -16,24 +16,47 @@ import json
 from dataclasses import dataclass
 from enum import Enum
 
-# Production LLM Integration
+# Production LLM Integration - OpenAI and Gemini support
 import google.generativeai as genai
 from dotenv import load_dotenv
+
+# Try OpenAI import
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    logging.warning("⚠️ OpenAI not available, install with: pip install openai")
 
 # Load environment variables - try multiple locations
 load_dotenv()  # Try current directory first
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))  # Try parent directory
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))  # Try root directory
 
-# Configure Gemini API
+# Configure LLM APIs based on provider
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'openai').lower()
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+
+# Initialize OpenAI
+if OPENAI_API_KEY and OPENAI_AVAILABLE and LLM_PROVIDER == 'openai':
+    openai.api_key = OPENAI_API_KEY
+    OPENAI_CONFIGURED = True
+    logging.info("✅ OpenAI API configured successfully")
+else:
+    OPENAI_CONFIGURED = False
+
+# Initialize Gemini as backup
 if GEMINI_API_KEY and GEMINI_API_KEY != 'your_gemini_api_key_here':
     genai.configure(api_key=GEMINI_API_KEY)
     GEMINI_CONFIGURED = True
-    logging.info("✅ Gemini API configured successfully")
+    logging.info("✅ Gemini API configured as backup")
 else:
     GEMINI_CONFIGURED = False
-    logging.warning("⚠️ Gemini API key not configured")
+
+# Determine which LLM is available
+LLM_CONFIGURED = OPENAI_CONFIGURED or GEMINI_CONFIGURED
+logging.info(f"🤖 LLM Provider: {LLM_PROVIDER}, OpenAI: {OPENAI_CONFIGURED}, Gemini: {GEMINI_CONFIGURED}")
 
 # Import RAG and MCP systems
 try:
@@ -154,11 +177,11 @@ class HospitalContextManager:
 class IntelligentSupplyAssistant:
     """
     LLM-powered assistant for intelligent supply chain decisions
-    Real-time integration with Google Gemini API
+    Supports OpenAI GPT and Google Gemini APIs
     """
     
-    def __init__(self, provider: LLMProvider = LLMProvider.GEMINI):
-        self.provider = provider
+    def __init__(self, provider: str = None):
+        self.provider = provider or LLM_PROVIDER
         self.conversation_history = []
         self.context_memory = {}
         self.context_manager = HospitalContextManager()
@@ -167,65 +190,173 @@ class IntelligentSupplyAssistant:
             'max_output_tokens': int(os.getenv('LLM_MAX_TOKENS', '4096')),
         }
         
-        # Initialize Gemini model
-        if GEMINI_CONFIGURED:
+        # Initialize based on provider
+        if self.provider == 'openai' and OPENAI_CONFIGURED:
+            self.client = openai.OpenAI(api_key=OPENAI_API_KEY)
+            self.model_name = os.getenv('LLM_MODEL', 'gpt-3.5-turbo')
+            self.model = None  # OpenAI uses client pattern
+            logging.info(f"✅ Intelligent Supply Assistant initialized with OpenAI ({self.model_name})")
+            
+        elif self.provider == 'gemini' and GEMINI_CONFIGURED:
             try:
                 self.model = genai.GenerativeModel(
-                    model_name=os.getenv('LLM_MODEL', 'gemini-1.5-pro'),
+                    model_name=os.getenv('LLM_MODEL', 'gemini-1.5-flash'),
                     generation_config=genai.types.GenerationConfig(
                         temperature=self.model_config['temperature'],
-                        max_output_tokens=self.model_config['max_output_tokens']
+                        max_output_tokens=min(self.model_config['max_output_tokens'], 1024),
+                        candidate_count=1,
+                        top_p=0.8,
+                        top_k=10
                     ),
                     system_instruction=self.context_manager.get_system_prompt()
                 )
+                self.client = None  # Gemini uses model pattern
                 logging.info(f"✅ Intelligent Supply Assistant initialized with Gemini")
             except Exception as e:
                 logging.error(f"❌ Gemini model initialization failed: {e}")
                 self.model = None
+                self.client = None
         else:
             self.model = None
-            logging.warning("⚠️ Gemini not configured - using fallback responses")
+            self.client = None
+            logging.warning(f"⚠️ No LLM configured (Provider: {self.provider}, OpenAI: {OPENAI_CONFIGURED}, Gemini: {GEMINI_CONFIGURED})")
     
+    def _is_configured(self) -> bool:
+        """Check if any LLM is properly configured"""
+        return (self.provider == 'openai' and self.client is not None) or \
+               (self.provider == 'gemini' and self.model is not None)
+    
+    def _optimize_prompt_for_speed(self, prompt: str) -> str:
+        """Optimize prompt for faster processing while maintaining quality"""
+        # If prompt is too long, truncate intelligently
+        if len(prompt) > 2000:
+            # Keep system instructions and user query, truncate context
+            lines = prompt.split('\n')
+            user_query_start = -1
+            context_start = -1
+            
+            for i, line in enumerate(lines):
+                if 'User Query:' in line:
+                    user_query_start = i
+                elif 'Relevant Context:' in line:
+                    context_start = i
+                    break
+            
+            if context_start > 0 and user_query_start > 0:
+                # Keep everything up to context, then limit context
+                optimized_lines = lines[:context_start + 1]
+                context_lines = lines[context_start + 1:]
+                
+                # Keep only first 10 lines of context
+                optimized_lines.extend(context_lines[:10])
+                if len(context_lines) > 10:
+                    optimized_lines.append("... (context truncated for faster processing)")
+                
+                return '\n'.join(optimized_lines)
+        
+        return prompt
+
+    async def _call_llm_api(self, prompt: str) -> tuple[str, float]:
+        """
+        Make API call to configured LLM (OpenAI or Gemini) with error handling
+        """
+        if not self._is_configured():
+            logging.warning("🔄 No LLM configured - using intelligent fallback")
+            return self._get_fallback_response(prompt)
+
+        try:
+            # Optimize prompt for faster processing
+            optimized_prompt = self._optimize_prompt_for_speed(prompt)
+            
+            if self.provider == 'openai' and self.client:
+                return await self._call_openai_api(optimized_prompt)
+            elif self.provider == 'gemini' and self.model:
+                return await self._call_llm_api(optimized_prompt)
+            else:
+                logging.warning("🔄 LLM not properly configured - using fallback")
+                return self._get_fallback_response(prompt)
+                
+        except Exception as e:
+            logging.error(f"❌ LLM API call failed: {e}")
+            return self._get_fallback_response(prompt)
+
+    async def _call_openai_api(self, prompt: str) -> tuple[str, float]:
+        """Call OpenAI API with error handling"""
+        try:
+            # Add small delay to avoid rate limiting
+            await asyncio.sleep(0.2)
+            
+            # Prepare messages
+            messages = [
+                {"role": "system", "content": self.context_manager.get_system_prompt()},
+                {"role": "user", "content": prompt}
+            ]
+            
+            # Make API call with timeout
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    model=self.model_name,
+                    messages=messages,
+                    temperature=self.model_config['temperature'],
+                    max_tokens=min(self.model_config['max_output_tokens'], 1024),
+                    top_p=0.9
+                ),
+                timeout=15.0  # 15 second timeout for OpenAI
+            )
+            
+            response_text = response.choices[0].message.content
+            confidence = 0.95  # High confidence for successful API calls
+            
+            logging.info(f"✅ OpenAI API response received ({len(response_text)} chars)")
+            return response_text, confidence
+            
+        except asyncio.TimeoutError:
+            logging.error("⏱️ OpenAI API timeout - using fallback response")
+            return self._get_fallback_response(prompt)
+        except Exception as e:
+            logging.error(f"❌ OpenAI API error: {e}")
+            return self._get_fallback_response(prompt)
+
     async def _call_gemini_api(self, prompt: str) -> tuple[str, float]:
         """
         Make API call to Gemini with error handling and confidence estimation
         """
-        if not GEMINI_CONFIGURED or not self.model:
-            logging.warning("🔄 Gemini not configured - using intelligent fallback")
-            return self._get_fallback_response(prompt)
-
         try:
             # Add small delay to avoid rate limiting
             await asyncio.sleep(0.5)
             
-            # Generate response with timeout
-            response = await asyncio.wait_for(
-                asyncio.to_thread(self.model.generate_content, prompt),
-                timeout=30.0  # 30 second timeout
-            )
+            # Generate response with shorter timeout for better UX
+            try:
+                # First attempt with shorter timeout
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(self.model.generate_content, prompt),
+                    timeout=10.0  # 10 second timeout for first attempt
+                )
+            except asyncio.TimeoutError:
+                logging.warning("⚠️ First Gemini API attempt timed out (10s), trying with reduced prompt...")
+                # Second attempt with simplified prompt
+                simplified_prompt = prompt[:800] + "..." if len(prompt) > 800 else prompt
+                try:
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(self.model.generate_content, simplified_prompt),
+                        timeout=8.0  # 8 second timeout for retry
+                    )
+                except asyncio.TimeoutError:
+                    logging.error("⏱️ Gemini API timeout after retry - using fallback response")
+                    return self._get_fallback_response(prompt)
             
-            if response.text:
-                # Estimate confidence based on response characteristics
-                confidence = self._estimate_confidence(response.text, prompt)
-                logging.info(f"✅ Gemini API success - confidence: {confidence:.2f}")
-                return response.text.strip(), confidence
-            else:
-                logging.warning("⚠️ Empty response from Gemini API - using fallback")
-                return self._get_fallback_response(prompt)
-                
-        except asyncio.TimeoutError:
-            logging.error("⏱️ Gemini API timeout - using fallback response")
-            return self._get_fallback_response(prompt)
+            response_text = response.text if hasattr(response, 'text') else str(response)
+            confidence = 0.95  # High confidence for successful API calls
+            
+            logging.info(f"✅ Gemini API response received ({len(response_text)} chars)")
+            return response_text, confidence
+            
         except Exception as e:
-            error_msg = str(e)
-            if "rate limit" in error_msg.lower() or "quota" in error_msg.lower():
-                logging.warning(f"🚦 Rate limit hit: {e} - using fallback")
-                # Wait longer before next request
-                await asyncio.sleep(2.0)
-            elif "authentication" in error_msg.lower() or "api key" in error_msg.lower():
-                logging.error(f"🔑 Authentication error: {e} - check API key")
+            if "429" in str(e) or "quota" in str(e).lower():
+                logging.error(f"⏱️ Gemini API quota exceeded: {e}")
             else:
-                logging.error(f"❌ Gemini API error: {e} - using fallback")
+                logging.error(f"❌ Gemini API error: {e}")
             return self._get_fallback_response(prompt)
 
     def _estimate_confidence(self, response: str, prompt: str) -> float:
@@ -395,7 +526,7 @@ class IntelligentSupplyAssistant:
         Provide specific, actionable recommendations prioritized by patient care impact.
         """
         
-        content, confidence = await self._call_gemini_api(prompt)
+        content, confidence = await self._call_llm_api(prompt)
         
         # Extract suggestions from the response
         suggestions = self._extract_suggestions(content)
@@ -464,7 +595,7 @@ class IntelligentSupplyAssistant:
         Format as a professional procurement justification document suitable for executive review.
         """
         
-        content, confidence = await self._call_gemini_api(prompt)
+        content, confidence = await self._call_llm_api(prompt)
         suggestions = self._extract_suggestions(content)
         
         return LLMResponse(
@@ -522,7 +653,7 @@ class IntelligentSupplyAssistant:
         Format as a professional hospital alert with appropriate urgency indicators.
         """
         
-        content, confidence = await self._call_gemini_api(prompt)
+        content, confidence = await self._call_llm_api(prompt)
         suggestions = self._extract_suggestions(content)
         
         return LLMResponse(
@@ -630,7 +761,7 @@ class IntelligentSupplyAssistant:
 ```
         """
         
-        content, confidence = await self._call_gemini_api(prompt)
+        content, confidence = await self._call_llm_api(prompt)
         
         # Clean up formatting for chat interface
         content = self._clean_chat_formatting(content)
