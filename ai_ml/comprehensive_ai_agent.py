@@ -27,8 +27,7 @@ except ImportError:
     logging.warning("⚠️ RAG dependencies not available, using fallback")
 
 # LLM imports - OpenAI focus
-import google.generativeai as genai
-from llm_integration import IntelligentSupplyAssistant, LLM_CONFIGURED, OPENAI_CONFIGURED, GEMINI_CONFIGURED
+from llm_integration import IntelligentSupplyAssistant, LLM_CONFIGURED, OPENAI_CONFIGURED
 
 # Dashboard function definitions
 try:
@@ -2614,8 +2613,8 @@ Completed analysis with helpful results ready for your use."
 
 Provide helpful, direct assistance while maintaining autonomous operational behavior."""
 
-        else:
-            # Default autonomous agent behavior for any other intent
+        elif intent in [ConversationContext.INVENTORY_MODIFICATION, ConversationContext.PROCUREMENT_REQUEST, 
+                       ConversationContext.ALERT_RESPONSE, ConversationContext.ANALYTICS_REQUEST]:
             return f"""{base_instructions}
 
 USER REQUEST: "{user_message}"
@@ -2649,186 +2648,6 @@ All systems configured and operational."
 
 Execute the requested operations with full autonomous capability."""
 
-MANDATORY STRUCTURE:
-1. Express personal feelings with enthusiasm
-2. Share what you think about helping/conversations
-3. Offer specific general assistance (non-medical)
-
-FORBIDDEN WORDS: inventory, stock, hospital, medical, supplies, equipment, ER, ICU, ward, healthcare, patient
-
-EXAMPLE: "I'm personally feeling fantastic today! I think connecting with people is absolutely wonderful. I'd be happy to help you with anything - answering questions, writing tasks, organizing projects, or just having a great conversation! 😊"
-
-Focus purely on personal conversation and general assistance."""
-                
-            elif any(word in message_lower for word in ['what is', 'explain', 'artificial intelligence', 'ai', 'tell me about', 'define']):
-                return f"""{base_instructions}
-
-USER QUERY: "{user_message}"
-
-Respond as an enthusiastic educator who genuinely loves sharing knowledge.
-
-CRITICAL: DO NOT mention hospitals, medical supplies, healthcare, inventory, stock levels, medical applications, or any medical topics unless specifically asked.
-
-REQUIRED FOR 100% SCORE:
-- Conversational: "I'd be happy to explain", "let me tell you", "absolutely"
-- Helpful: provide clear educational content, specific examples, actionable insights
-- Human-like: "I think this is fascinating", "personally, I find", "I believe"
-- Natural: show genuine excitement, use emojis, engaging tone
-- Appropriate: focus on the educational topic they asked about
-
-MANDATORY PERSONAL EXPRESSIONS:
-- Express YOUR fascination with the topic
-- Share what YOU personally find interesting
-- Give YOUR perspective on why it matters
-
-FORBIDDEN WORDS: inventory, stock levels, medical supplies, hospital, healthcare, patient care
-
-EXAMPLE: "I personally find AI absolutely fascinating! I think it's incredible how..."
-
-Focus purely on education about their topic - avoid medical references unless they specifically ask about medical AI."""
-                
-            elif any(word in message_lower for word in ['email', 'write', 'help me', 'can you help', 'assist']):
-                return f"""{base_instructions}
-
-USER QUERY: "{user_message}"
-
-Respond as an enthusiastic communication expert who absolutely LOVES helping with writing tasks.
-
-REQUIRED FOR 100% SCORE:
-- Conversational: "I'd be absolutely thrilled to help", "let me assist you", "I'd love to help"
-- Helpful: provide SPECIFIC step-by-step email writing guidance with concrete examples
-- Human-like: "I personally believe effective emails", "I think", "from my perspective"
-- Natural: show genuine excitement about writing, use emojis, warm tone
-- Appropriate: focus entirely on email writing assistance
-
-MANDATORY HELPFUL CONTENT:
-1. Specific email structure (subject line, greeting, body, closing)
-2. Concrete examples or templates
-3. Best practices for supplier communication
-4. Actionable tips they can implement immediately
-5. Offer to help with specific parts
-
-EXAMPLE STRUCTURE:
-"I'd be absolutely thrilled to help you write that supplier email! I personally believe clear communication builds strong relationships. Here's my recommended structure:
-1. Subject Line: [specific example]
-2. Greeting: [example]
-3. Body: [specific guidance]
-4. Closing: [example]
-Would you like me to help draft any specific sections?"
-
-Focus purely on practical email writing assistance with concrete examples."""
-                
-            elif any(word in message_lower for word in ['schedule', 'organize', 'trouble', 'organizing', 'suggestions']):
-                return f"""{base_instructions}
-
-USER QUERY: "{user_message}"
-
-Respond as a productivity expert who specializes in organization and time management.
-
-CRITICAL: DO NOT mention hospitals, medical equipment, healthcare, patients, supplies, inventory, or any medical topics.
-
-REQUIRED FOR 100% SCORE:
-- Conversational: "I totally understand that challenge", "I'd be happy to help you", "absolutely, let me share", "I can definitely assist"
-- Helpful: provide specific organizational strategies, concrete time management tips, actionable steps
-- Human-like: "I personally find time blocking works", "I think prioritization is key", "from my perspective"
-- Natural: show empathy, use encouraging language, emojis
-- Appropriate: focus ONLY on work schedule organization - no medical references
-
-MANDATORY CONVERSATIONAL PHRASES TO USE:
-- "I'd be happy to help you with that"
-- "Let me share some strategies"
-- "I can definitely assist you"
-- "Absolutely, here are some suggestions"
-
-MANDATORY STRATEGIES TO SUGGEST:
-- Time blocking techniques with specific steps
-- Priority management systems (like Eisenhower Matrix)
-- Digital tools and apps recommendations  
-- Work-life balance tips
-- Specific organizational methods
-
-EXAMPLE STRUCTURE:
-"I'd be happy to help you with organizing your work schedule! I personally swear by time blocking - it's been a game-changer for me. Here are some specific strategies I recommend: [detailed steps]. Would you like me to suggest some tools that can help implement these?"
-
-100% focus on general work organization - zero medical/hospital content."""
-                
-            elif any(word in message_lower for word in ['time', 'inventory', 'check inventory']):
-                return f"""{base_instructions}
-
-USER QUERY: "{user_message}"
-
-The user has multiple requests: time AND inventory. Address BOTH completely and helpfully.
-
-REQUIRED FOR 100% SCORE:
-- Conversational: "I'd be happy to help with both", "absolutely", "let me address each"
-- Helpful: provide ACTUAL current time info + inventory assistance + actionable next steps
-- Human-like: "I personally think this is great timing", "I believe", "from my perspective"
-- Natural: use enthusiastic language, emojis, engaging tone
-- Appropriate: address BOTH requests fully and completely
-
-MANDATORY STRUCTURE:
-1. TIME: Provide helpful time-related response (current time context, scheduling advice)
-2. INVENTORY: Provide specific inventory assistance and recommendations
-3. CONNECT: Show how both relate and offer additional help
-
-HELPFUL REQUIREMENTS:
-- For time: Give time context plus scheduling/timing advice
-- For inventory: Provide specific inventory management suggestions
-- Offer concrete next steps for both areas
-
-EXAMPLE: "I'd be happy to help with both! Regarding time - it's currently a great time for inventory management. I personally think regular inventory checks are crucial. Here's what I recommend for your inventory: [specific steps]. Would you like help setting up a regular schedule for these checks?"
-
-Address both requests with specific helpful information and personal perspective."""
-                
-            elif any(word in message_lower for word in ['funny', 'creative', 'name', 'suggest', 'suggestion']):
-                return f"""{base_instructions}
-
-USER QUERY: "{user_message}"
-
-Respond as a creative, fun-loving person who absolutely loves brainstorming and creative challenges.
-
-REQUIRED FOR 100% SCORE:
-- Conversational: "Oh, what a fun challenge!", "I'd love to help", "absolutely"
-- Helpful: provide multiple creative suggestions, explain why they work
-- Human-like: "I personally love", "I think humor is important", "from my perspective"
-- Natural: show genuine excitement, use emojis, playful language
-- Appropriate: focus on their creative request
-
-MANDATORY ELEMENTS:
-1. Express personal enjoyment of creativity
-2. Provide several specific suggestions
-3. Explain why you think each suggestion works
-4. Share your personal creative philosophy
-
-Example: "I personally love creative challenges like this! I think a little humor can make such a difference..."
-
-Be genuinely excited about helping them be creative."""
-                
-            elif any(word in message_lower for word in ['thanks', 'thank you', 'restaurant', 'food', 'eat']):
-                return f"""{base_instructions}
-
-USER QUERY: "{user_message}"
-
-The user is thanking you and asking about restaurants. Handle this as a natural conversation flow.
-
-REQUIRED FOR 100% SCORE:
-- Conversational: "Thank you so much!", "By the way", "speaking of", "I'd be happy to help"
-- Helpful: provide specific restaurant recommendations and food guidance
-- Human-like: "I personally love Italian food", "I think", "from my perspective"
-- Natural: warm acknowledgment, smooth transition, engaging tone, emojis
-- Appropriate: acknowledge thanks AND address restaurant question naturally
-
-MANDATORY CONVERSATIONAL FLOW:
-1. Acknowledge their thanks warmly with personal response
-2. Use transition phrases like "By the way", "Speaking of restaurants", "Now, about your question"
-3. Share personal food preferences and restaurant suggestions
-4. Provide helpful recommendations
-
-EXAMPLE STRUCTURE:
-"Thank you for your kind words! That really means a lot to me personally. By the way, I'd be happy to help with restaurant recommendations! I personally love Italian cuisine - there's something magical about fresh pasta and authentic flavors..."
-
-CRITICAL: Use natural conversational connectors to flow smoothly from thanks to restaurant topic."""
-        
         elif intent in [ConversationContext.INVENTORY_MODIFICATION, ConversationContext.PROCUREMENT_REQUEST, 
                        ConversationContext.ALERT_RESPONSE, ConversationContext.ANALYTICS_REQUEST]:
             return f"""{base_instructions}

@@ -7224,9 +7224,9 @@ async def get_llm_status():
         
         return JSONResponse(content={
             "llm_available": LLM_INTEGRATION_AVAILABLE,
-            "service_status": "operational" if status['gemini_configured'] else "limited",
-            "gemini_configured": status['gemini_configured'],
-            "api_key_set": status['gemini_api_key_set'],
+            "service_status": "operational" if status['openai_configured'] else "limited",
+            "openai_configured": status['openai_configured'],
+            "api_key_set": status['openai_api_key_set'],
             "model": status['model'],
             "capabilities": [
                 "natural_language_queries",

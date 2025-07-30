@@ -34,20 +34,20 @@ except ImportError:
     SKLEARN_AVAILABLE = False
     logging.warning("Scikit-learn not available - using basic text matching")
 
-# Google Gemini for embeddings
+# OpenAI for embeddings
 try:
-    import google.generativeai as genai
+    import openai
     from dotenv import load_dotenv
     load_dotenv()
     
-    GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-    if GEMINI_API_KEY and GEMINI_API_KEY != 'your_gemini_api_key_here':
-        genai.configure(api_key=GEMINI_API_KEY)
-        GEMINI_AVAILABLE = True
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    if OPENAI_API_KEY and OPENAI_API_KEY != 'your_openai_api_key_here':
+        openai.api_key = OPENAI_API_KEY
+        OPENAI_AVAILABLE = True
     else:
-        GEMINI_AVAILABLE = False
+        OPENAI_AVAILABLE = False
 except ImportError:
-    GEMINI_AVAILABLE = False
+    OPENAI_AVAILABLE = False
 
 class DocumentType(Enum):
     INVENTORY_DATA = "inventory_data"

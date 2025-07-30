@@ -28,7 +28,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_core.runnables import RunnableLambda
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
 # Import clean data models and enums (no legacy mock data)
@@ -131,32 +131,24 @@ class LangGraphSupplyAgent:
         # Initialize LLM with fallback
         self.llm = None
         try:
-            # Check for GEMINI_API_KEY first, then GOOGLE_API_KEY
-            gemini_key = os.environ.get("GEMINI_API_KEY")
-            google_key = os.environ.get("GOOGLE_API_KEY")
+            # Check for OPENAI_API_KEY
+            openai_key = os.environ.get("OPENAI_API_KEY")
             
             if api_key:
-                os.environ["GOOGLE_API_KEY"] = api_key
-                self.llm = ChatGoogleGenerativeAI(
-                    model=os.environ.get("LLM_MODEL", "gemini-1.5-flash"),
+                os.environ["OPENAI_API_KEY"] = api_key
+                self.llm = ChatOpenAI(
+                    model=os.environ.get("LLM_MODEL", "gpt-3.5-turbo"),
                     temperature=float(os.environ.get("LLM_TEMPERATURE", "0.1"))
                 )
-                self.logger.info("✅ LLM initialized with provided API key")
-            elif gemini_key:
-                os.environ["GOOGLE_API_KEY"] = gemini_key
-                self.llm = ChatGoogleGenerativeAI(
-                    model=os.environ.get("LLM_MODEL", "gemini-1.5-flash"),
+                self.logger.info("✅ LLM initialized with provided OpenAI API key")
+            elif openai_key:
+                self.llm = ChatOpenAI(
+                    model=os.environ.get("LLM_MODEL", "gpt-3.5-turbo"),
                     temperature=float(os.environ.get("LLM_TEMPERATURE", "0.1"))
                 )
-                self.logger.info("✅ LLM initialized with GEMINI_API_KEY from environment")
-            elif google_key:
-                self.llm = ChatGoogleGenerativeAI(
-                    model=os.environ.get("LLM_MODEL", "gemini-1.5-flash"),
-                    temperature=float(os.environ.get("LLM_TEMPERATURE", "0.1"))
-                )
-                self.logger.info("✅ LLM initialized with GOOGLE_API_KEY from environment")
+                self.logger.info("✅ LLM initialized with OPENAI_API_KEY from environment")
             else:
-                self.logger.warning("⚠️ No API key provided, LLM features will be limited")
+                self.logger.warning("⚠️ No OpenAI API key provided, LLM features will be limited")
         except Exception as e:
             self.logger.warning(f"⚠️ LLM initialization failed: {e}. Continuing without LLM features.")
             self.llm = None
@@ -1172,7 +1164,7 @@ class LangGraphSupplyAgent:
 # Create global instance for backward compatibility
 try:
     # Try to get API key from environment or use None for fallback
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY")
     langgraph_agent = LangGraphSupplyAgent(api_key=api_key)
     logging.info("✅ LangGraph agent initialized successfully")
 except Exception as e:

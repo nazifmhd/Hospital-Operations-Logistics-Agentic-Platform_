@@ -35,7 +35,8 @@ typing-extensions>=4.0.0
 # dataclasses>=0.8  # Built-in for Python 3.7+, not needed for Python 3.10
 
 # LLM integration (already configured)
-google-generativeai>=0.3.0
+# OpenAI integration for LLM processing
+openai>=1.0.0
 python-dotenv>=1.0.0
 
 # Utility libraries

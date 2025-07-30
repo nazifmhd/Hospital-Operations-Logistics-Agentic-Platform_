@@ -27,7 +27,8 @@ fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 sqlalchemy[asyncio]>=2.0.23
 asyncio-mqtt>=0.16.0
-google-generativeai>=0.3.0
+# OpenAI integration for LLM processing
+openai>=1.0.0
 python-dotenv>=1.0.0
 pydantic>=2.5.0
 requests>=2.31.0
